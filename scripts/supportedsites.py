@@ -370,6 +370,7 @@ AUTH_MAP = {
     "flickr"         : _OAUTH,
     "furaffinity"    : _COOKIES,
     "furbooru"       : "API Key",
+    "googledrive"    : _COOKIES,
     "horne"          : "Required",
     "idolcomplex"    : "Supported",
     "imgbb"          : "Supported",

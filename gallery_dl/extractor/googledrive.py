@@ -6,7 +6,6 @@
 
 """Extractors for https://www.google.com/drive/"""
 
-import datetime
 from .common import Extractor, Message
 from .. import text
 
@@ -18,22 +17,36 @@ class GoogledriveBase(Extractor):
     category = "googledrive"
     root = "https://drive.google.com"
     filename_fmt = "{name[:180]} ({id}).{extension}"
+    archive_fmt = "{name} ({id}).{extension}"
+
+    def __init__(self, match):
+        Extractor.__init__(self, match)
+        self.match = match
+
+    def _init(self):
+        self.recursive = self.config("recursive", False)
 
     def get_file_download_url(self, file):
         FILE_DOWNLOAD_URL = (
             "https://drive.usercontent.google.com"
-            "/download?id={id}&export=download"
+            "/download?id={id}&export=download&confirm=t"
         )
-        BIG_FILE_SIZE = 25*1024*1024
 
         url = FILE_DOWNLOAD_URL.format(id=file["id"])
 
-        if not ("size" in file) or file["size"] > BIG_FILE_SIZE:
-            request_head = self.request(url, method="HEAD")
-            if (not ("Content-Disposition" in request_head.headers)):
-                dl_page = self.request(url).text
-                at_query = text.extr(dl_page, '"at" value="', '"')
-                url += "&confirm=t&at=" + at_query
+        if (not file.get("size")) or (file["size"] > 10*1024*1024):  # 10 MB
+            headers = self.request(url, method="HEAD").headers
+            if "Content-Disposition" not in headers:
+                confirm_page = self.request(url)
+
+                if '"at" value="' not in confirm_page.text:
+                    uuid = text.extr(confirm_page.text, '"uuid" value="', '"')
+                    confirm_page = self.request(url + "&uuid=" + uuid)
+
+                at = text.extr(confirm_page.text, '"at" value="', '"')
+                url += "&at=" + at
+
+        # TODO: Handle quota exceeded error
 
         return url
 
@@ -99,15 +112,6 @@ class GoogledriveBase(Extractor):
             item["type"] = "file"
             item["url"] = self.get_file_download_url(item)
 
-    @staticmethod
-    def parse_unix_timestamp(ms):
-        try:
-            return datetime.datetime.fromtimestamp(
-                int(ms)/1000
-            ).strftime("%Y-%m-%dT%H:%M:%S")
-        except ValueError:
-            return None
-
 
 class GoogledriveFileExtractor(GoogledriveBase):
     """Extractor for Google Drive files"""
@@ -116,37 +120,33 @@ class GoogledriveFileExtractor(GoogledriveBase):
     directory_fmt = ("{category}", "{name[:180]} ({id})")
     example = "https://drive.google.com/file/d/ID"
 
-    def __init__(self, match):
-        GoogledriveBase.__init__(self, match)
-        self.file_id = match.group(1)
+    def get_file_metadata(self, page):
+        page_extr = text.extract_from(page)
+
+        file = {
+            "filename": text.unescape(page_extr(
+                '"og:title" content="', '">'
+            )),
+            "mime": page_extr('docs-dm":', ',').split('"')[-2],
+            "id": text.unescape(page_extr(
+                '"https://drive.google.com/file/d/', '/'
+            ))
+        }
+
+        self.item_filename_handle(file)
+        self.item_mime_handle(file)
+
+        return file
 
     def items(self):
-        url = self.root + "/file/d/" + self.file_id
+        url = self.root + "/file/d/" + self.match.group(1)
         page = self.request(url).text
-        file = self.metadata(page)
+        file = self.get_file_metadata(page)
 
         yield Message.Directory, file
 
         if "url" in file:
             yield Message.Url, file["url"], file
-
-    def metadata(self, page):
-        page_extr = text.extract_from(page)
-
-        file = {}
-        file["filename"] = text.unescape(page_extr(
-            '"og:title" content="', '">'
-        ))
-        self.item_filename_handle(file)
-
-        file["mime"] = page_extr('docs-dm":', ',').split('"')[-2]
-        file["id"] = text.unescape(page_extr(
-            '"https://drive.google.com/file/d/', '/'
-        ))
-
-        self.item_mime_handle(file)
-
-        return file
 
 
 class GoogledriveFolderExtractor(GoogledriveBase):
@@ -156,31 +156,7 @@ class GoogledriveFolderExtractor(GoogledriveBase):
     directory_fmt = ("{category}", "{title[:180]} ({id})")
     example = "https://drive.google.com/drive/folders/ID"
 
-    def __init__(self, match):
-        GoogledriveBase.__init__(self, match)
-        self.folder_id = match.group(1)
-        self.recursive = self.config("recursive", False)
-
-    def items(self):
-        url = self.root + "/drive/folders/" + self.folder_id
-        page = self.request(url).text
-        metadata_iter = self.metadata_iter(page)
-
-        yield Message.Directory, next(metadata_iter)
-
-        folders = []
-        for item in metadata_iter:
-            if item["type"] == "folder":
-                folders.append(item)
-            elif "url" in item:
-                yield Message.Url, item["url"], item
-
-        if self.recursive and folders:
-            for folder in folders:
-                folder["_extractor"] = GoogledriveFolderExtractor
-                yield Message.Queue, folder["url"], folder
-
-    def metadata_iter(self, page):
+    def get_folder_metadata_iter(self, page):
         directory = {
             "title": text.unescape(text.extr(
                 page, '<title>', ' - Google Drive</title>'
@@ -198,21 +174,22 @@ class GoogledriveFolderExtractor(GoogledriveBase):
         )
 
         for i, item_cwiz_data in enumerate(items_raw_cwiz_data_iter):
-            item = {}
-            item["num"] = i + 1
+            item = {
+                "num": i + 1,
+                "id": text.unescape(text.extr(
+                    item_cwiz_data, 'data-id="', '"'
+                )),
+                "filename": text.unescape(text.extr(
+                    item_cwiz_data, 'data-tooltip-unhoverable="true">', '<'
+                )),
+            }
 
-            item["id"] = text.unescape(text.extr(
-                item_cwiz_data, 'data-id="', '"'
-            ))
-            item["filename"] = text.unescape(text.extr(
-                item_cwiz_data, 'data-tooltip-unhoverable="true">', '<'
-            ))
             self.item_filename_handle(item)
 
             item_script_data = text.extr(
                 items_raw_script_data,
                 (item["id"] + "\\x22,\\x5b\\x22" +
-                 directory["id"] + "\\x22\\x5d,"),
+                    directory["id"] + "\\x22\\x5d,"),
                 ",\\x5b\\x5b1,"
             )
 
@@ -223,7 +200,7 @@ class GoogledriveFolderExtractor(GoogledriveBase):
             item["size"] = int(item_script_data.split(",")[-1])
 
             item_dates = list(map(
-                self.parse_unix_timestamp,
+                lambda ms: text.parse_timestamp(ms[:-3]),
                 item_script_data.split(",")[-5:-1]
             ))
             item["date_uploaded"] = item_dates[0]
@@ -233,3 +210,22 @@ class GoogledriveFolderExtractor(GoogledriveBase):
             self.item_mime_handle(item)
 
             yield item
+
+    def items(self):
+        url = self.root + "/drive/folders/" + self.match.group(1)
+        page = self.request(url).text
+        metadata_iter = self.get_folder_metadata_iter(page)
+
+        yield Message.Directory, next(metadata_iter)
+
+        folders = []
+        for item in metadata_iter:
+            if item["type"] == "folder":
+                folders.append(item)
+            elif "url" in item:
+                yield Message.Url, item["url"], item
+
+        if self.recursive and folders:
+            for folder in folders:
+                folder["_extractor"] = GoogledriveFolderExtractor
+                yield Message.Queue, folder["url"], folder

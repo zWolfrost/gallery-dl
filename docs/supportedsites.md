@@ -274,8 +274,8 @@ Consider all listed sites to potentially be NSFW.
 <tr>
     <td>Googledrive</td>
     <td>https://www.google.com/drive/</td>
-    <td>Folders, Files</td>
-    <td></td>
+    <td>Files, Folders</td>
+    <td><a href="https://github.com/mikf/gallery-dl#cookies">Cookies</a></td>
 </tr>
 <tr>
     <td>HatenaBlog</td>
