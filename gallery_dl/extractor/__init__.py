@@ -165,6 +165,7 @@ modules = [
     "tumblrgallery",
     "twibooru",
     "twitter",
+    "u18chan",
     "urlgalleries",
     "unsplash",
     "uploadir",
