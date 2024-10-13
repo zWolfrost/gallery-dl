@@ -111,6 +111,7 @@ modules = [
     "myportfolio",
     "naver",
     "naverwebtoon",
+    "nekohouse",
     "newgrounds",
     "nhentai",
     "nijie",
