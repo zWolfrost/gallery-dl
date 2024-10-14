@@ -22,8 +22,9 @@ class NekohouseExtractor(Extractor):
     filename_fmt = "{id}_{title[:180]}_{num:>02}_{filename[:180]}.{extension}"
     archive_fmt = "{service}_{user}_{id}_{num}"
 
-    user_url_fmt = "https://nekohouse.su/{}/user/{}"
-    post_url_fmt = "https://nekohouse.su/{}/user/{}/post/{}"
+    user_url_fmt = root + "/{}/user/{}"
+    import_url_fmt = root + "/{}/user/{}/post/{}"
+    post_url_fmt = root + "/post/{}"
 
     def __init__(self, match):
         Extractor.__init__(self, match)
@@ -32,14 +33,22 @@ class NekohouseExtractor(Extractor):
     def yield_post(self, url):
         page = self.request(url).text
         page_extractor = text.extract_from(page)
-        service, _, user, _, id = url.split("/")[3:]
 
-        published = page_extractor(
-            'name="published" content="', '"'
+        if len(url.split("/")) == 8:
+            service, _, user, _, id = url.split("/")[3:]
+            is_import = True
+        else:
+            service = user = None
+            id = url.split("/")[-1]
+            is_import = False
+
+        date = text.parse_datetime(
+            page_extractor('name="published" content="', '"'),
+            "%Y-%m-%d %H:%M:%S+00:00"
         )
-        title = page_extractor(
+        title = text.unescape(page_extractor(
             'class="scrape__title">\n            <span>', '</span>'
-        )
+        ))
         content = page_extractor(
             '<div class="scrape__content">\n      ', '\n    </div>'
         )
@@ -50,12 +59,13 @@ class NekohouseExtractor(Extractor):
         ]
 
         post = {
-            "service": service,
-            "user": text.parse_int(user),
+            "service": service or None,
+            "user": user or None,
             "id": text.parse_int(id),
-            "title": text.unescape(title),
-            "content": content,
-            "date": text.parse_datetime(published, "%Y-%m-%d %H:%M:%S+00:00")
+            "title": title or None,
+            "content": content or None,
+            "date": date or None,
+            "is_import": is_import
         }
 
         for num, url in enumerate(urls, 1):
@@ -67,14 +77,16 @@ class NekohouseExtractor(Extractor):
 class NekohouseUserExtractor(NekohouseExtractor):
     """Extractor for all posts from a nekohouse.su user listing"""
     subcategory = "user"
-    pattern = BASE_PATTERN + r"/([^/?#]+)/user/(\d+)/?(?:$|[?#])(?:o=(\d*))?"
+    pattern = BASE_PATTERN + r"/([^/?#]+)/user/([^/?#]+)/?(?:\?o=(\d*))?"
 
     def items(self):
         service, user, offset = self.match.groups()
         offset = int(offset or 0)
 
+        if offset % 50 != 0:
+            raise ValueError("Offset must be a multiple of 50.")
+
         yield Message.Directory, {
-            "category": self.category,
             "service": service,
             "user": user,
         }
@@ -87,13 +99,17 @@ class NekohouseUserExtractor(NekohouseExtractor):
             ).text
 
             post_count = 0
-            for id in text.extract_iter(
-                page, 'href="/{}/user/{}/post/'.format(service, user), '"'
+            for path in text.extract_iter(
+                page, '"\n  >\n      <a href="', '"'
             ):
                 post_count += 1
-                yield from self.yield_post(
-                    self.post_url_fmt.format(service, user, id)
-                )
+                for message, url, item in self.yield_post(self.root + path):
+                    yield message, url, {
+                        **item,
+                        "service": service,
+                        "user": user,
+                        "is_thumbnail": url.lstrip(self.root) in page
+                    }
 
             offset += 50
 
@@ -101,15 +117,19 @@ class NekohouseUserExtractor(NekohouseExtractor):
 class NekohousePostExtractor(NekohouseExtractor):
     """Extractor for a single nekohouse.su post"""
     subcategory = "post"
-    pattern = BASE_PATTERN + r"/([^/?#]+)/user/(\d+)/post/(\d+)"
+    pattern = BASE_PATTERN + r"/(?:([^/?#]+)/user/([^/?#]+)/)?post/([^/?#]+)"
 
     def items(self):
         service, user, id = self.match.groups()
+        is_import = service and user
+
         yield Message.Directory, {
-            "category": self.category,
             "service": service,
             "user": user,
+            "is_import": is_import,
         }
 
-        post_url = self.post_url_fmt.format(service, user, id)
+        post_url = self.import_url_fmt.format(service, user, id) \
+            if is_import else self.post_url_fmt.format(id)
+
         yield from self.yield_post(post_url)
