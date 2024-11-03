@@ -42,6 +42,10 @@ class NekohouseExtractor(Extractor):
             id = url.split("/")[-1]
             is_import = False
 
+
+        username = text.unescape(
+            page_extractor(' by ', ' from  | Nekohouse')
+        )
         date = text.parse_datetime(
             page_extractor('name="published" content="', '"'),
             "%Y-%m-%d %H:%M:%S+00:00"
@@ -61,6 +65,7 @@ class NekohouseExtractor(Extractor):
         post = {
             "service": service or None,
             "user": user or None,
+            "username": username or None,
             "id": text.parse_int(id),
             "title": title or None,
             "content": content or None,
@@ -68,16 +73,18 @@ class NekohouseExtractor(Extractor):
             "is_import": is_import
         }
 
+        yield post
+
         for num, url in enumerate(urls, 1):
-            yield Message.Url, url, text.nameext_from_url(
-                url, {**post, "num": num}
+            yield text.nameext_from_url(
+                url, {**post, "url": url, "num": num}
             )
 
 
 class NekohouseUserExtractor(NekohouseExtractor):
     """Extractor for all posts from a nekohouse.su user listing"""
     subcategory = "user"
-    pattern = BASE_PATTERN + r"/([^/?#]+)/user/([^/?#]+)/?(?:\?o=(\d*))?"
+    pattern = BASE_PATTERN + r"/([^/?#]+)/user/([^/?#]+)(?:$|/(?!post/)(?:\?o=(\d*))?)"
 
     def items(self):
         service, user, offset = self.match.groups()
@@ -85,11 +92,6 @@ class NekohouseUserExtractor(NekohouseExtractor):
 
         if offset % 50 != 0:
             raise ValueError("Offset must be a multiple of 50.")
-
-        yield Message.Directory, {
-            "service": service,
-            "user": user,
-        }
 
         post_count = -1
         while post_count != 0:
@@ -102,13 +104,19 @@ class NekohouseUserExtractor(NekohouseExtractor):
             for path in text.extract_iter(
                 page, '"\n  >\n      <a href="', '"'
             ):
+                yield_post = self.yield_post(self.root + path)
+
+                yield Message.Directory, {
+                    **next(yield_post),
+                    "service": service,
+                    "user": user
+                }
+
                 post_count += 1
-                for message, url, item in self.yield_post(self.root + path):
-                    yield message, url, {
-                        **item,
-                        "service": service,
-                        "user": user,
-                        "is_thumbnail": url.lstrip(self.root) in page
+                for post in yield_post:
+                    yield Message.Url, post["url"], {
+                        **post,
+                        "is_thumbnail": post["url"].lstrip(self.root) in page
                     }
 
             offset += 50
@@ -123,13 +131,16 @@ class NekohousePostExtractor(NekohouseExtractor):
         service, user, id = self.match.groups()
         is_import = service and user
 
-        yield Message.Directory, {
-            "service": service,
-            "user": user,
-            "is_import": is_import,
-        }
-
         post_url = self.import_url_fmt.format(service, user, id) \
             if is_import else self.post_url_fmt.format(id)
 
-        yield from self.yield_post(post_url)
+        yield_post = self.yield_post(post_url)
+
+        yield Message.Directory, {
+            **next(yield_post),
+            "service": service,
+            "user": user
+        }
+
+        for post in yield_post:
+            yield Message.Url, post["url"], post
