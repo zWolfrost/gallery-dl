@@ -43,9 +43,9 @@ class NekohouseExtractor(Extractor):
             is_import = False
 
 
-        username = text.unescape(
-            page_extractor('&#34; by ', ' from  | Nekohouse')
-        )
+        username = text.unescape(page_extractor(
+            '&#34; by ', ' from  | Nekohouse'
+        ))
         date = text.parse_datetime(
             page_extractor('name="published" content="', '"'),
             "%Y-%m-%d %H:%M:%S+00:00"
