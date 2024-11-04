@@ -42,7 +42,6 @@ class NekohouseExtractor(Extractor):
             id = url.split("/")[-1]
             is_import = False
 
-
         username = text.unescape(page_extractor(
             '&#34; by ', ' from  | Nekohouse'
         ))
@@ -103,7 +102,9 @@ class NekohouseUserExtractor(NekohouseExtractor):
             overrides = {
                 "service": service,
                 "user": user,
-                "username": text.extr(page, '<meta name="artist_name" content="', '">')
+                "username": text.extr(
+                    page, '<meta name="artist_name" content="', '">'
+                )
             }
 
             post_count = 0
