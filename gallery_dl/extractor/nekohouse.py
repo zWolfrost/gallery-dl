@@ -84,7 +84,7 @@ class NekohouseExtractor(Extractor):
 class NekohouseUserExtractor(NekohouseExtractor):
     """Extractor for all posts from a nekohouse.su user listing"""
     subcategory = "user"
-    pattern = BASE_PATTERN + r"/([^/?#]+)/user/([^/?#]+)(?:$|/(?!post/)(?:\?o=(\d*))?)"
+    pattern = BASE_PATTERN + r"/([^/?#]+)/user/([^/?#]+)/?(?:\?o=(\d+)?)?$"
 
     def items(self):
         service, user, offset = self.match.groups()
@@ -100,6 +100,12 @@ class NekohouseUserExtractor(NekohouseExtractor):
                 params={"o": offset}
             ).text
 
+            overrides = {
+                "service": service,
+                "user": user,
+                "username": text.extr(page, '<meta name="artist_name" content="', '">')
+            }
+
             post_count = 0
             for path in text.extract_iter(
                 page, '"\n  >\n      <a href="', '"'
@@ -108,14 +114,14 @@ class NekohouseUserExtractor(NekohouseExtractor):
 
                 yield Message.Directory, {
                     **next(yield_post),
-                    "service": service,
-                    "user": user
+                    **overrides
                 }
 
                 post_count += 1
                 for post in yield_post:
                     yield Message.Url, post["url"], {
                         **post,
+                        **overrides,
                         "is_thumbnail": post["url"].lstrip(self.root) in page
                     }
 
@@ -136,11 +142,7 @@ class NekohousePostExtractor(NekohouseExtractor):
 
         yield_post = self.yield_post(post_url)
 
-        yield Message.Directory, {
-            **next(yield_post),
-            "service": service,
-            "user": user
-        }
+        yield Message.Directory, next(yield_post)
 
         for post in yield_post:
             yield Message.Url, post["url"], post
