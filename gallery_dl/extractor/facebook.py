@@ -7,7 +7,7 @@
 """Extractors for https://www.facebook.com/"""
 
 from .common import Extractor, Message
-from .. import text, exception
+from .. import text, util, exception
 
 BASE_PATTERN = r"(?:https?://)?(?:[\w-]+\.)?facebook\.com"
 
@@ -39,9 +39,7 @@ class FacebookExtractor(Extractor):
 
     @staticmethod
     def decode_all(txt):
-        return text.unescape(
-            txt.encode("utf-8").decode("unicode_escape")
-        ).replace("\\/", "/")
+        return text.unescape(util.json_loads('"' + txt + '"'))
 
     @staticmethod
     def parse_set_page(set_page):
