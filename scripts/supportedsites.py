@@ -66,7 +66,7 @@ CATEGORY_MAP = {
     "hentaihere"     : "HentaiHere",
     "hentaiimg"      : "Hentai Image",
     "hentainexus"    : "HentaiNexus",
-    "hiperdex"       : "Hipertoon",
+    "hiperdex"       : "HiperDEX",
     "hitomi"         : "Hitomi.la",
     "horne"          : "horne",
     "idolcomplex"    : "Idol Complex",
@@ -149,11 +149,13 @@ CATEGORY_MAP = {
     "vanillarock"    : "もえぴりあ",
     "vidyart2"       : "/v/idyart2",
     "vidyapics"      : "Vidya Booru",
+    "visuabusters"   : "VISUABUSTERS",
     "vk"             : "VK",
     "vsco"           : "VSCO",
     "wallpapercave"  : "Wallpaper Cave",
     "webmshare"      : "webmshare",
     "webtoons"       : "Webtoon",
+    "weebcentral"    : "Weeb Central",
     "wikiart"        : "WikiArt.org",
     "wikigg"         : "wiki.gg",
     "wikimediacommons": "Wikimedia Commons",
@@ -213,6 +215,7 @@ SUBCATEGORY_MAP = {
         "user-models": "User Models",
         "user-images": "User Images",
         "user-posts" : "User Posts",
+        "user-videos": "User Videos",
     },
     "coomerparty": {
         "discord"       : "",
@@ -574,6 +577,9 @@ def build_extractor_list():
     # add wikifeetx.com
     default["wikifeetx"] = default["wikifeet"]
     domains["wikifeetx"] = "https://www.wikifeetx.com/"
+
+    # add extra e621 extractors
+    categories["E621"]["e621"].extend(default.pop("e621", ()))
 
     return categories, domains
 
