@@ -383,16 +383,37 @@ Type
     |Duration|_
 Default
     * ``"0.5-1.5"``
-        ``ao3``, ``civitai``,
-        ``[Danbooru]``, ``[E621]``, ``[foolfuuka]:search``, ``itaku``,
+        ``ao3``,
+        ``civitai``,
+        ``[Danbooru]``,
+        ``[E621]``,
+        ``[foolfuuka]:search``,
+        ``itaku``,
         ``koharu``,
-        ``newgrounds``, ``[philomena]``, ``pixiv:novel``, ``plurk``,
-        ``poipiku`` , ``pornpics``, ``scrolller``, ``soundgasm``,
-        ``urlgalleries``, ``vk``, ``zerochan``
+        ``newgrounds``,
+        ``[philomena]``,
+        ``pixiv:novel``,
+        ``plurk``,
+        ``poipiku`` ,
+        ``pornpics``,
+        ``scrolller``,
+        ``soundgasm``,
+        ``urlgalleries``,
+        ``vk``,
+        ``weebcentral``,
+        ``xfolio``,
+        ``zerochan``
     * ``"1.0-2.0"``
-        ``flickr``, ``weibo``, ``[wikimedia]``
+        ``flickr``,
+        ``pexels``,
+        ``weibo``,
+        ``[wikimedia]``
+    * ``"1.4"``
+        ``wallhaven``
     * ``"2.0-4.0"``
-        ``behance``, ``imagefap``, ``[Nijie]``
+        ``behance``,
+        ``imagefap``,
+        ``[Nijie]``
     * ``"3.0-6.0"``
         ``bilibili``,
         ``exhentai``,
@@ -636,16 +657,15 @@ extractor.*.user-agent
 Type
     ``string``
 Default
-    ``"Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:128.0) Gecko/20100101 Firefox/128.0"``
+    * ``"gallery-dl/VERSION"``: ``[Danbooru]``, ``mangadex``
+    * ``"gallery-dl/VERSION (by mikf)"``: ``[E621]``
+    * ``"Patreon/72.2.28 (Android; Android 14; Scale/2.10)"``: ``patreon``
+    * ``"Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:LATEST) Gecko/20100101 Firefox/LATEST"``: otherwise
 Description
     User-Agent header value to be used for HTTP requests.
 
     Setting this value to ``"browser"`` will try to automatically detect
-    and use the User-Agent used by the system's default browser.
-
-    Note: This option has no effect on
-    `pixiv`, `e621`, `mangadex`, and `patreon`
-    extractors, as these need specific values to function correctly.
+    and use the ``User-Agent`` header of the system's default browser.
 
 
 extractor.*.browser
@@ -719,7 +739,7 @@ Example
 
 Description
     List of TLS/SSL cipher suites in
-    `OpenSSL cipher list format <https://www.openssl.org/docs/manmaster/man1/openssl-ciphers.html#CIPHER-LIST-FORMAT>`__
+    `OpenSSL cipher list format <https://docs.openssl.org/master/man1/openssl-ciphers/#cipher-list-format>`__
     to be passed to
     `ssl.SSLContext.set_ciphers() <https://docs.python.org/3/library/ssl.html#ssl.SSLContext.set_ciphers>`__
 
@@ -1494,7 +1514,7 @@ Description
 
     * ``facets``: ``hashtags``, ``mentions``, and ``uris``
     * ``user``: detailed ``user`` metadata for the user referenced in the input URL
-      (See `app.bsky.actor.getProfile <https://www.docs.bsky.app/docs/api/app-bsky-actor-get-profile>`__).
+      (See `app.bsky.actor.getProfile <https://docs.bsky.app/docs/api/app-bsky-actor-get-profile>`__).
 
 
 
@@ -1507,7 +1527,7 @@ Default
 Description
     Sets the maximum depth of returned reply posts.
 
-    (See `depth` parameter of `app.bsky.feed.getPostThread <https://www.docs.bsky.app/docs/api/app-bsky-feed-get-post-thread>`__)
+    (See `depth` parameter of `app.bsky.feed.getPostThread <https://docs.bsky.app/docs/api/app-bsky-feed-get-post-thread>`__)
 
 
 extractor.bluesky.quoted
@@ -1677,9 +1697,11 @@ Description
     when processing a user profile.
 
     Possible values are
-    ``"user-models"``,
-    ``"user-posts"``,
-    ``"user-images"``.
+
+    * ``"user-models"``
+    * ``"user-posts"``
+    * ``"user-images"``
+    * ``"user-videos"``
 
     It is possible to use ``"all"`` instead of listing all values separately.
 
@@ -1698,7 +1720,7 @@ Example
 Description
     Extract additional ``generation`` metadata.
 
-    Note: This requires 1 additional HTTP request per image.
+    Note: This requires 1 additional HTTP request per image or video.
 
 
 extractor.civitai.nsfw
@@ -1745,66 +1767,6 @@ Description
     to download images in JPEG format at their original resolution.
 
 
-extractor.cohost.asks
----------------------
-Type
-    ``bool``
-Default
-    ``true``
-Description
-    Extract ``ask`` posts.
-
-
-extractor.cohost.avatar
------------------------
-Type
-    ``bool``
-Default
-    ``false``
-Description
-    Download ``avatar`` images.
-
-
-extractor.cohost.background
----------------------------
-Type
-    ``bool``
-Default
-    ``false``
-Description
-    Download ``background``/``banner``/``header`` images.
-
-
-extractor.cohost.pinned
------------------------
-Type
-    ``bool``
-Default
-    ``false``
-Description
-    Extract pinned posts.
-
-
-extractor.cohost.replies
-------------------------
-Type
-    ``bool``
-Default
-    ``true``
-Description
-    Extract reply posts.
-
-
-extractor.cohost.shares
------------------------
-Type
-    ``bool``
-Default
-    ``false``
-Description
-    Extract shared posts.
-
-
 extractor.cyberdrop.domain
 --------------------------
 Type
@@ -1820,8 +1782,8 @@ Description
     uses the same domain as a given input URL.
 
 
-extractor.danbooru.external
----------------------------
+extractor.[Danbooru].external
+-----------------------------
 Type
     ``bool``
 Default
@@ -1831,8 +1793,8 @@ Description
     follow the ``source`` and download from there if possible.
 
 
-extractor.danbooru.ugoira
--------------------------
+extractor.[Danbooru].ugoira
+---------------------------
 Type
     ``bool``
 Default
@@ -1881,45 +1843,6 @@ Description
     Note: Changing this setting is normally not necessary. When the value is
     greater than the per-page limit, gallery-dl will stop after the first
     batch. The value cannot be less than 1.
-
-
-extractor.derpibooru.api-key
-----------------------------
-Type
-    ``string``
-Default
-    ``null``
-Description
-    Your `Derpibooru API Key <https://derpibooru.org/registrations/edit>`__,
-    to use your account's browsing settings and filters.
-
-
-extractor.derpibooru.filter
----------------------------
-Type
-    ``integer``
-Default
-    ``56027`` (`Everything <https://derpibooru.org/filters/56027>`_ filter)
-Description
-    The content filter ID to use.
-
-    Setting an explicit filter ID overrides any default filters and can be used
-    to access 18+ content without `API Key <extractor.derpibooru.api-key_>`_.
-
-    See `Filters <https://derpibooru.org/filters>`_ for details.
-
-
-extractor.derpibooru.svg
-------------------------
-Type
-    ``bool``
-Default
-    ``true``
-Description
-    Download SVG versions of images when available.
-
-    Try to download the ``view_url`` version of these posts
-    when this option is disabled.
 
 
 extractor.deviantart.auto-watch
@@ -3049,6 +2972,16 @@ Description
     * ``"reverse"``: Same as ``"asc"``
 
 
+extractor.khinsider.covers
+--------------------------
+Type
+    ``bool``
+Default
+    ``false``
+Description
+    Download album cover images.
+
+
 extractor.khinsider.format
 --------------------------
 Type
@@ -3488,16 +3421,61 @@ Description
 
     Possible formats:
 
-    * ``original``
-    * ``default``
-    * ``default_small``
-    * ``default_blurred``
-    * ``default_blurred_small``
-    * ``thumbnail``
-    * ``thumbnail_large``
-    * ``thumbnail_small``
-    * ``url``
-    * ``download_url``
+    * ``download_url`` (``"a":1,"p":1``)
+    * ``url`` (``"w":620``)
+    * ``original`` (``"q":100,"webp":0``)
+    * ``default`` (``"w":620``)
+    * ``default_small`` (``"w":360``)
+    * ``default_blurred`` (``"w":620``)
+    * ``default_blurred_small`` (``"w":360``)
+    * ``thumbnail`` (``"h":360,"w":360``)
+    * ``thumbnail_large`` (``"h":1080,"w":1080``)
+    * ``thumbnail_small`` (``"h":100,"w":100``)
+
+
+extractor.[philomena].api-key
+-----------------------------
+Type
+    ``string``
+Default
+    ``null``
+Description
+    Your account's API Key,
+    to use your personal browsing settings and filters.
+
+
+extractor.[philomena].filter
+----------------------------
+Type
+    ``integer``
+Default
+    :``derpibooru``:
+        ``56027`` (`Everything <https://derpibooru.org/filters/56027>`__ filter)
+    :``ponybooru``:
+        ``3`` (`Nah. <https://ponybooru.org/filters/3>`__ filter)
+    :otherwise:
+        ``2``
+
+Description
+    The content filter ID to use.
+
+    Setting an explicit filter ID overrides any default filters and can be used
+    to access 18+ content without `API Key <extractor.[philomena].api-key_>`_.
+
+    See `Filters <https://derpibooru.org/filters>`_ for details.
+
+
+extractor.[philomena].svg
+-------------------------
+Type
+    ``bool``
+Default
+    ``true``
+Description
+    Download SVG versions of images when available.
+
+    Try to download the ``view_url`` version of these posts
+    when this option is disabled.
 
 
 extractor.pillowfort.external
@@ -5302,7 +5280,7 @@ Default
     ``"file_url"``
 Example
     * ``"preview_url"``
-    * ``["sample_url", "preview_url", "file_url"}``
+    * ``["sample_url", "preview_url", "file_url"]``
 Description
     Alternate field name to retrieve download URLs from.
 
@@ -6004,10 +5982,13 @@ Default
     .. code:: json
 
         {
-            "Pictures": ["jpg", "jpeg", "png", "gif", "bmp", "svg", "webp"],
-            "Video"   : ["flv", "ogv", "avi", "mp4", "mpg", "mpeg", "3gp", "mkv", "webm", "vob", "wmv"],
-            "Music"   : ["mp3", "aac", "flac", "ogg", "wma", "m4a", "wav"],
-            "Archives": ["zip", "rar", "7z", "tar", "gz", "bz2"]
+            "Pictures" : ["jpg", "jpeg", "png", "gif", "bmp", "svg", "webp",
+                          "avif", "heic", "heif", "ico", "psd"],
+            "Video"    : ["flv", "ogv", "avi", "mp4", "mpg", "mpeg", "3gp", "mkv",
+                          "webm", "vob", "wmv", "m4v", "mov"],
+            "Music"    : ["mp3", "aac", "flac", "ogg", "wma", "m4a", "wav"],
+            "Archives" : ["zip", "rar", "7z", "tar", "gz", "bz2"],
+            "Documents": ["txt", "pdf"]
         }
 
 Description
