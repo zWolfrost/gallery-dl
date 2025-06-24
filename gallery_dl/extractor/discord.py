@@ -121,16 +121,16 @@ class DiscordExtractor(Extractor):
                                 })
                                 break
 
-                for num, file in enumerate(message_metadata["files"], start=1):
-                    text.nameext_from_url(file["url"], file)
-                    file["num"] = num
+            for num, file in enumerate(message_metadata["files"], start=1):
+                text.nameext_from_url(file["url"], file)
+                file["num"] = num
 
-                yield Message.Directory, message_metadata
+            yield Message.Directory, message_metadata
 
-                for file in message_metadata["files"]:
-                    message_metadata_file = message_metadata.copy()
-                    message_metadata_file.update(file)
-                    yield Message.Url, file["url"], message_metadata_file
+            for file in message_metadata["files"]:
+                message_metadata_file = message_metadata.copy()
+                message_metadata_file.update(file)
+                yield Message.Url, file["url"], message_metadata_file
 
     def extract_channel_text(self, channel_id):
         for message in self.api.get_channel_messages(channel_id):
@@ -348,7 +348,7 @@ class DiscordAPI():
                 "sort_by": "last_message_time",
                 "sort_order": "desc",
                 "limit": THREADS_BATCH,
-                "offset": + offset,
+                "offset": offset,
             }).get("threads", [])
 
         return self._pagination(_method, THREADS_BATCH)
