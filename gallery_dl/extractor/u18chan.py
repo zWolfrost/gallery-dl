@@ -22,24 +22,22 @@ class U18chanThreadExtractor(Extractor):
     pattern = BASE_PATTERN + r"/board/u18chan/([^/]+)/topic/(\d+)"
     example = "https://u18chan.com/board/u18chan/fur/topic/12345"
 
-    def __init__(self, match):
-        Extractor.__init__(self, match)
-        self.board, self.thread = match.groups()
-
     def items(self):
+        board, thread = self.groups
+
         url = self.root + "/board/u18chan/{}/topic/{}".format(
-            self.board, self.thread
+            board, thread
         )
         page = self.request(url).text
 
         directory = {
-            "board": self.board,
-            "thread": self.thread
+            "board": board,
+            "thread": thread
         }
-        yield Message.Directory, directory
+        yield Message.Directory, "", directory
 
         posts_iter = text.extract_iter(
-            page, '<table class="ReplyBoxTable', '<a name="'
+            page, '<table class="ReplyBoxTable', '\n\t\t</table>'
         )
         for post in posts_iter:
             if 'class="FileDetails"' in post:
