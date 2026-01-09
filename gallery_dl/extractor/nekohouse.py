@@ -1,7 +1,5 @@
 # -*- coding: utf-8 -*-
 
-# Copyright 2025 Mike Fährmann
-#
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License version 2 as
 # published by the Free Software Foundation.
@@ -12,110 +10,144 @@ from .common import Extractor, Message
 from .. import text
 
 BASE_PATTERN = r"(?:https?://)?nekohouse\.su"
-USER_PATTERN = BASE_PATTERN + r"/([^/?#]+)/user/([^/?#]+)"
 
 
 class NekohouseExtractor(Extractor):
     """Base class for nekohouse extractors"""
     category = "nekohouse"
     root = "https://nekohouse.su"
+    directory_fmt = ("{category}", "{service}", "{user}")
+    filename_fmt = "{id}_{title[:180]}_{num:>02}_{filename[:180]}.{extension}"
+    archive_fmt = "{service}_{user}_{id}_{num}"
 
+    user_url_fmt = root + "/{}/user/{}"
+    import_url_fmt = root + "/{}/user/{}/post/{}"
+    post_url_fmt = root + "/post/{}"
 
-class NekohousePostExtractor(NekohouseExtractor):
-    subcategory = "post"
-    directory_fmt = ("{category}", "{service}", "{username} ({user_id})",
-                     "{post_id} {date} {title[b:230]}")
-    filename_fmt = "{num:>02} {id|filename}.{extension}"
-    archive_fmt = "{service}_{user_id}_{post_id}_{hash}"
-    pattern = USER_PATTERN + r"/post/([^/?#]+)"
-    example = "https://nekohouse.su/SERVICE/user/12345/post/12345"
+    def extract_post(self, url, override=lambda x: x):
+        page = self.request(url).text
+        page_extractor = text.extract_from(page)
 
-    def items(self):
-        service, user_id, post_id = self.groups
-        url = f"{self.root}/{service}/user/{user_id}/post/{post_id}"
-        html = self.request(url).text
+        if len(url.split("/")) == 8:
+            service, _, user, _, id = url.split("/")[3:]
+            is_import = True
+        else:
+            service = user = None
+            id = url.split("/")[-1]
+            is_import = False
 
-        files = self._extract_files(html)
-        post = self._extract_post(html)
-        post["service"] = service
-        post["user_id"] = user_id
-        post["post_id"] = post_id
-        post["count"] = len(files)
+        username = text.unescape(page_extractor(
+            '&#34; by ', ' from  | Nekohouse'
+        ))
+        date = self.parse_datetime(
+            page_extractor('name="published" content="', '"'),
+            "%Y-%m-%d %H:%M:%S+00:00"
+        )
+        title = text.unescape(page_extractor(
+            'class="scrape__title">\n            <span>', '</span>'
+        ))
+        content = page_extractor(
+            '<div class="scrape__content">\n      ', '\n    </div>'
+        )
 
-        yield Message.Directory, "", post
-        for post["num"], file in enumerate(files, 1):
-            url = file["url"]
-            text.nameext_from_url(url, file)
-            file["hash"] = file["filename"]
-            file.update(post)
-            if "name" in file:
-                text.nameext_from_url(file.pop("name"), file)
-            yield Message.Url, url, file
-
-    def _extract_post(self, html):
-        extr = text.extract_from(html)
-        return {
-            "username": text.unescape(extr(
-                'class="scrape__user-name', '</').rpartition(">")[2].strip()),
-            "title"   : text.unescape(extr(
-                'class="scrape__title', '</').rpartition(">")[2]),
-            "date"   : self.parse_datetime_iso(extr(
-                'datetime="', '"')[:19]),
-            "content": text.unescape(extr(
-                'class="scrape__content">', "</div>").strip()),
-        }
-
-    def _extract_files(self, html):
         files = []
 
-        extr = text.extract_from(text.extr(
-            html, 'class="scrape__files"', "<footer"))
-        while True:
-            file_id = extr('<a href="/post/', '"')
-            if not file_id:
+        for num, html in enumerate(
+            text.extract_iter(page, 'href="/data/', '>'), start=1
+        ):
+            if not html:
                 break
+
+            path = html.split('"')[0]
+
+            fileext = text.nameext_from_url(path)
+
             files.append({
-                "id"  : file_id,
-                "url" : self.root + extr('href="', '"'),
-                "type": "file",
+                "url": self.root + "/data/" + path,
+                "filename": text.unquote(text.nameext_from_url(
+                    text.extr(html, 'download="', '"', path)
+                )["filename"]),
+                "hash": fileext["filename"],
+                "extension": fileext["extension"],
+                "num": num
             })
 
-        extr = text.extract_from(text.extr(
-            html, 'class="scrape__attachments"', "</ul>"))
-        while True:
-            url = extr('href="', '"')
-            if not url:
-                break
-            files.append({
-                "id"  : "",
-                "url" : self.root + url,
-                "name": text.unescape(extr('download="', '"')),
-                "type": "attachment",
-            })
+        post = {
+            "service": service or None,
+            "user": user or None,
+            "username": username or None,
+            "id": text.parse_int(id),
+            "title": title or None,
+            "content": content or None,
+            "date": date or None,
+            "is_import": is_import
+        }
 
-        return files
+        yield Message.Directory, "", override(post)
+
+        for file in files:
+            yield Message.Url, file["url"], override({**post, **file})
 
 
 class NekohouseUserExtractor(NekohouseExtractor):
+    """Extractor for all posts from a nekohouse.su user listing"""
     subcategory = "user"
-    pattern = USER_PATTERN + r"/?(?:\?([^#]+))?(?:$|\?|#)"
-    example = "https://nekohouse.su/SERVICE/user/12345"
+    pattern = BASE_PATTERN + r"/([^/?#]+)/user/([^/?#]+)/?(?:\?o=(\d+)?)?$"
 
     def items(self):
-        service, user_id, _ = self.groups
-        creator_url = f"{self.root}/{service}/user/{user_id}"
-        params = {"o": 0}
+        service, user, offset = self.groups
+        offset = int(offset or 0)
 
-        data = {"_extractor": NekohousePostExtractor}
-        while True:
-            html = self.request(creator_url, params=params).text
+        if offset % 50 != 0:
+            raise ValueError("Offset must be a multiple of 50.")
 
-            cnt = 0
-            for post in text.extract_iter(html, "<article", "</article>"):
-                cnt += 1
-                post_url = self.root + text.extr(post, '<a href="', '"')
-                yield Message.Queue, post_url, data
+        has_extracted = True
+        while has_extracted:
+            has_extracted = False
 
-            if cnt < 50:
-                return
-            params["o"] += 50
+            page = self.request(
+                self.user_url_fmt.format(service, user),
+                params={"o": offset}
+            ).text
+
+            OVERRIDES = {
+                "service": service,
+                "user": user,
+                "username": text.extr(
+                    page, '<meta name="artist_name" content="', '">'
+                )
+            }
+
+            for path in text.extract_iter(
+                page, '"\n  >\n      <a href="', '"'
+            ):
+                has_extracted = True
+
+                def _override(post):
+                    post.update(OVERRIDES)
+
+                    if "url" in post:
+                        post["is_thumbnail"] = (
+                            post["url"].lstrip(self.root) in page
+                        )
+
+                    return post
+
+                yield from self.extract_post(self.root + path, _override)
+
+            offset += 50
+
+
+class NekohousePostExtractor(NekohouseExtractor):
+    """Extractor for a single nekohouse.su post"""
+    subcategory = "post"
+    pattern = BASE_PATTERN + r"/(?:([^/?#]+)/user/([^/?#]+)/)?post/([^/?#]+)"
+
+    def items(self):
+        service, user, id = self.groups
+        is_import = service and user
+
+        post_url = self.import_url_fmt.format(service, user, id) \
+            if is_import else self.post_url_fmt.format(id)
+
+        yield from self.extract_post(post_url)
