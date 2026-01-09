@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-# Copyright 2024 Mike Fährmann
+# Copyright 2024-2025 Mike Fährmann
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License version 2 as
@@ -8,7 +8,7 @@
 
 """Extractors for https://archiveofourown.org/"""
 
-from .common import Extractor, Message
+from .common import Extractor, Message, Dispatch
 from .. import text, util, exception
 from ..cache import cache
 
@@ -102,8 +102,11 @@ class Ao3Extractor(Extractor):
     def _pagination(self, path, needle='<li id="work_'):
         while True:
             page = self.request(self.root + path).text
+
             yield from text.extract_iter(page, needle, '"')
-            path = text.extr(page, '<a rel="next" href="', '"')
+
+            path = (text.extr(page, '<a rel="next" href="', '"') or
+                    text.extr(page, '<li class="next"><a href="', '"'))
             if not path:
                 return
             path = text.unescape(path)
@@ -135,7 +138,7 @@ class Ao3WorkExtractor(Ao3Extractor):
         self.login()
 
         work_id = self.groups[0]
-        url = "{}/works/{}".format(self.root, work_id)
+        url = f"{self.root}/works/{work_id}"
         response = self.request(url, notfound="work")
 
         if response.url.endswith("/users/login?restricted=true"):
@@ -144,7 +147,7 @@ class Ao3WorkExtractor(Ao3Extractor):
         page = response.text
         if len(page) < 20000 and \
                 '<h2 class="landmark heading">Adult Content Warning</' in page:
-            raise exception.StopExtraction("Adult Content")
+            raise exception.AbortExtraction("Adult Content")
 
         extr = text.extract_from(page)
 
@@ -179,11 +182,11 @@ class Ao3WorkExtractor(Ao3Extractor):
                 extr('<dd class="freeform tags">', "</dd>")),
             "lang"         : extr('<dd class="language" lang="', '"'),
             "series"       : extr('<dd class="series">', "</dd>"),
-            "date"         : text.parse_datetime(
-                extr('<dd class="published">', "<"), "%Y-%m-%d"),
-            "date_completed": text.parse_datetime(
-                extr('>Completed:</dt><dd class="status">', "<"), "%Y-%m-%d"),
-            "date_updated" : text.parse_timestamp(
+            "date"         : self.parse_datetime_iso(extr(
+                '<dd class="published">', "<")),
+            "date_completed": self.parse_datetime_iso(extr(
+                '>Completed:</dt><dd class="status">', "<")),
+            "date_updated" : self.parse_timestamp(
                 path.rpartition("updated_at=")[2]),
             "words"        : text.parse_int(
                 extr('<dd class="words">', "<").replace(",", "")),
@@ -205,8 +208,7 @@ class Ao3WorkExtractor(Ao3Extractor):
         }
         data["language"] = util.code_to_language(data["lang"])
 
-        series = data["series"]
-        if series:
+        if series := data["series"]:
             extr = text.extract_from(series)
             data["series"] = {
                 "prev" : extr(' class="previous" href="/works/', '"'),
@@ -218,7 +220,7 @@ class Ao3WorkExtractor(Ao3Extractor):
         else:
             data["series"] = None
 
-        yield Message.Directory, data
+        yield Message.Directory, "", data
         for fmt in self.formats:
             try:
                 url = text.urljoin(self.root, fmts[fmt])
@@ -249,18 +251,14 @@ class Ao3SearchExtractor(Ao3Extractor):
     example = "https://archiveofourown.org/works/search?work_search[query]=air"
 
 
-class Ao3UserExtractor(Ao3Extractor):
+class Ao3UserExtractor(Dispatch, Ao3Extractor):
     """Extractor for an AO3 user profile"""
-    subcategory = "user"
     pattern = (BASE_PATTERN + r"/users/([^/?#]+(?:/pseuds/[^/?#]+)?)"
                r"(?:/profile)?/?(?:$|\?|#)")
     example = "https://archiveofourown.org/users/USER"
 
-    def initialize(self):
-        pass
-
     def items(self):
-        base = "{}/users/{}/".format(self.root, self.groups[0])
+        base = f"{self.root}/users/{self.groups[0]}/"
         return self._dispatch_extractors((
             (Ao3UserWorksExtractor   , base + "works"),
             (Ao3UserSeriesExtractor  , base + "series"),

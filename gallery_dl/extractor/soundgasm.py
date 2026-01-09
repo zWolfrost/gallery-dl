@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-# Copyright 2022-2023 Mike Fährmann
+# Copyright 2022-2025 Mike Fährmann
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License version 2 as
@@ -26,7 +26,7 @@ class SoundgasmExtractor(Extractor):
     def items(self):
         for sound in map(self._extract_sound, self.sounds()):
             url = sound["url"]
-            yield Message.Directory, sound
+            yield Message.Directory, "", sound
             yield Message.Url, url, text.nameext_from_url(url, sound)
 
     def _extract_sound(self, url):
@@ -58,7 +58,7 @@ class SoundgasmAudioExtractor(SoundgasmExtractor):
         self.user, self.slug = match.groups()
 
     def sounds(self):
-        return ("{}/u/{}/{}".format(self.root, self.user, self.slug),)
+        return (f"{self.root}/u/{self.user}/{self.slug}",)
 
 
 class SoundgasmUserExtractor(SoundgasmExtractor):
@@ -69,7 +69,7 @@ class SoundgasmUserExtractor(SoundgasmExtractor):
 
     def __init__(self, match):
         SoundgasmExtractor.__init__(self, match)
-        self.user = match.group(1)
+        self.user = match[1]
 
     def sounds(self):
         page = self.request(self.root + "/user/" + self.user).text

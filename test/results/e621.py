@@ -140,11 +140,74 @@ __tests__ = (
 },
 
 {
-    "#url"     : "https://e621.net/favorites?page=2&user_id=53275",
+    "#url"     : "https://e621.net/favorites?page=1&user_id=460755",
     "#category": ("E621", "e621", "favorite"),
     "#class"   : e621.E621FavoriteExtractor,
     "#pattern" : r"https://static\d.e621.net/data/../../[0-9a-f]+",
-    "#count"   : "> 260",
+    "#count"   : 15,
+},
+
+{
+    "#url"     : "https://e621.cc/posts?tags=rating:safe",
+    "#category": ("E621", "e621", "tag"),
+    "#class"   : e621.E621TagExtractor,
+},
+
+{
+    "#url"     : "https://e621.cc/?tags=rating:safe",
+    "#category": ("E621", "e621", "frontend"),
+    "#class"   : e621.E621FrontendExtractor,
+    "#results" : "https://e621.net/posts?tags=rating:safe",
+},
+
+{
+    "#url"     : "https://e621.anthro.fr/?q=rating:safe",
+    "#category": ("E621", "e621", "frontend"),
+    "#class"   : e621.E621FrontendExtractor,
+    "#results" : "https://e621.net/posts?tags=rating:safe",
+},
+
+{
+    "#url"     : "https://e621.net/artists/54632",
+    "#category": ("E621", "e621", "artist"),
+    "#class"   : e621.E621ArtistExtractor,
+    "#results" : "https://e621.net/posts?tags=emsibap",
+
+    "created_at"    : "2021-05-01T11:28:56.483-04:00",
+    "creator_id"    : 338533,
+    "domains"       : [[
+        "furaffinity.net",
+        3,
+    ]],
+    "group_name"    : "",
+    "id"            : 54632,
+    "is_active"     : True,
+    "is_locked"     : False,
+    "linked_user_id": None,
+    "name"          : "emsibap",
+    "notes"         : None,
+    "other_names"   : [],
+    "updated_at"    : "2021-05-01T11:28:56.488-04:00",
+    "urls"          : [{
+        "artist_id"     : 54632,
+        "created_at"    : "2021-05-01T11:28:56.486-04:00",
+        "id"            : 217681,
+        "is_active"     : True,
+        "normalized_url": "http://www.furaffinity.net/user/emsibap/",
+        "updated_at"    : "2021-05-01T11:28:56.486-04:00",
+        "url"           : "https://www.furaffinity.net/user/emsibap",
+    }],
+},
+
+{
+    "#url"     : "https://e621.net/artists?search%5Bany_name_or_url_matches%5D=emsi",
+    "#category": ("E621", "e621", "artist-search"),
+    "#class"   : e621.E621ArtistSearchExtractor,
+    "#results" : (
+        "https://e621.net/posts?tags=demsigma",
+        "https://e621.net/posts?tags=emsibap",
+        "https://e621.net/posts?tags=aluminemsiren",
+    ),
 },
 
 )

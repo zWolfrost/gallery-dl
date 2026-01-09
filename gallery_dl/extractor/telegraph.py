@@ -27,9 +27,8 @@ class TelegraphGalleryExtractor(GalleryExtractor):
                 'property="og:title" content="', '"')),
             "description": text.unescape(extr(
                 'property="og:description" content="', '"')),
-            "date": text.parse_datetime(extr(
-                'property="article:published_time" content="', '"'),
-                "%Y-%m-%dT%H:%M:%S%z"),
+            "date": self.parse_datetime_iso(extr(
+                'property="article:published_time" content="', '"')),
             "author": text.unescape(extr(
                 'property="article:author" content="', '"')),
             "post_url": text.unescape(extr(
@@ -44,7 +43,7 @@ class TelegraphGalleryExtractor(GalleryExtractor):
         num_zeroes = len(str(len(figures)))
         num = 0
 
-        result = []
+        results = []
         for figure in figures:
             url, pos = text.extract(figure, 'src="', '"')
             if url.startswith("/embed/"):
@@ -54,10 +53,10 @@ class TelegraphGalleryExtractor(GalleryExtractor):
             caption, pos = text.extract(figure, "<figcaption>", "<", pos)
             num += 1
 
-            result.append((url, {
+            results.append((url, {
                 "url"          : url,
                 "caption"      : text.unescape(caption) if caption else "",
                 "num"          : num,
                 "num_formatted": str(num).zfill(num_zeroes),
             }))
-        return result
+        return results

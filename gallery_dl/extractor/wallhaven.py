@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-# Copyright 2018-2023 Mike Fährmann
+# Copyright 2018-2025 Mike Fährmann
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License version 2 as
@@ -8,7 +8,7 @@
 
 """Extractors for https://wallhaven.cc/"""
 
-from .common import Extractor, Message
+from .common import Extractor, Message, Dispatch
 from .. import text, exception
 
 
@@ -29,7 +29,7 @@ class WallhavenExtractor(Extractor):
             self._transform(wp)
             wp.update(metadata)
             url = wp["url"]
-            yield Message.Directory, wp
+            yield Message.Directory, "", wp
             yield Message.Url, url, text.nameext_from_url(url, wp)
 
     def wallpapers(self):
@@ -39,13 +39,11 @@ class WallhavenExtractor(Extractor):
         """Return general metadata"""
         return ()
 
-    @staticmethod
-    def _transform(wp):
+    def _transform(self, wp):
         wp["url"] = wp.pop("path")
         if "tags" in wp:
             wp["tags"] = [t["name"] for t in wp["tags"]]
-        wp["date"] = text.parse_datetime(
-            wp.pop("created_at"), "%Y-%m-%d %H:%M:%S")
+        wp["date"] = self.parse_datetime_iso(wp.pop("created_at"))
         wp["width"] = wp.pop("dimension_x")
         wp["height"] = wp.pop("dimension_y")
         wp["wh_category"] = wp["category"]
@@ -61,7 +59,7 @@ class WallhavenSearchExtractor(WallhavenExtractor):
 
     def __init__(self, match):
         WallhavenExtractor.__init__(self, match)
-        self.params = text.parse_query(match.group(1))
+        self.params = text.parse_query(match[1])
 
     def wallpapers(self):
         return self.api.search(self.params)
@@ -88,21 +86,13 @@ class WallhavenCollectionExtractor(WallhavenExtractor):
         return {"username": self.username, "collection_id": self.collection_id}
 
 
-class WallhavenUserExtractor(WallhavenExtractor):
+class WallhavenUserExtractor(Dispatch, WallhavenExtractor):
     """Extractor for a wallhaven user"""
-    subcategory = "user"
     pattern = r"(?:https?://)?wallhaven\.cc/user/([^/?#]+)/?$"
     example = "https://wallhaven.cc/user/USER"
 
-    def __init__(self, match):
-        WallhavenExtractor.__init__(self, match)
-        self.username = match.group(1)
-
-    def initialize(self):
-        pass
-
     def items(self):
-        base = "{}/user/{}/".format(self.root, self.username)
+        base = f"{self.root}/user/{self.groups[0]}/"
         return self._dispatch_extractors((
             (WallhavenUploadsExtractor    , base + "uploads"),
             (WallhavenCollectionsExtractor, base + "favorites"),
@@ -117,13 +107,13 @@ class WallhavenCollectionsExtractor(WallhavenExtractor):
 
     def __init__(self, match):
         WallhavenExtractor.__init__(self, match)
-        self.username = match.group(1)
+        self.username = match[1]
 
     def items(self):
+        base = f"{self.root}/user/{self.username}/favorites/"
         for collection in self.api.collections(self.username):
             collection["_extractor"] = WallhavenCollectionExtractor
-            url = "https://wallhaven.cc/user/{}/favorites/{}".format(
-                self.username, collection["id"])
+            url = base + str(collection["id"])
             yield Message.Queue, url, collection
 
 
@@ -137,7 +127,7 @@ class WallhavenUploadsExtractor(WallhavenExtractor):
 
     def __init__(self, match):
         WallhavenExtractor.__init__(self, match)
-        self.username = match.group(1)
+        self.username = match[1]
 
     def wallpapers(self):
         params = {"q": "@" + self.username}
@@ -156,7 +146,7 @@ class WallhavenImageExtractor(WallhavenExtractor):
 
     def __init__(self, match):
         WallhavenExtractor.__init__(self, match)
-        self.wallpaper_id = match.group(1)
+        self.wallpaper_id = match[1]
 
     def wallpapers(self):
         return (self.api.info(self.wallpaper_id),)
@@ -184,7 +174,7 @@ class WallhavenAPI():
         return self._call(endpoint)["data"]
 
     def collection(self, username, collection_id):
-        endpoint = "/v1/collections/{}/{}".format(username, collection_id)
+        endpoint = f"/v1/collections/{username}/{collection_id}"
         return self._pagination(endpoint)
 
     def collections(self, username):
@@ -209,9 +199,9 @@ class WallhavenAPI():
                 continue
 
             self.extractor.log.debug("Server response: %s", response.text)
-            raise exception.StopExtraction(
-                "API request failed (%s %s)",
-                response.status_code, response.reason)
+            raise exception.AbortExtraction(
+                f"API request failed "
+                f"({response.status_code} {response.reason})")
 
     def _pagination(self, endpoint, params=None, metadata=None):
         if params is None:

@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-# Copyright 2016-2023 Mike Fährmann
+# Copyright 2016-2025 Mike Fährmann
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License version 2 as
@@ -26,7 +26,7 @@ class KhinsiderSoundtrackExtractor(AsynchronousMixin, Extractor):
 
     def __init__(self, match):
         Extractor.__init__(self, match)
-        self.album = match.group(1)
+        self.album = match[1]
 
     def items(self):
         url = self.root + "/game-soundtracks/album/" + self.album
@@ -35,7 +35,7 @@ class KhinsiderSoundtrackExtractor(AsynchronousMixin, Extractor):
             raise exception.NotFoundError("soundtrack")
 
         data = self.metadata(page)
-        yield Message.Directory, data
+        yield Message.Directory, "", data
 
         if self.config("covers", False):
             for num, url in enumerate(self._extract_covers(page), 1):
@@ -63,6 +63,7 @@ class KhinsiderSoundtrackExtractor(AsynchronousMixin, Extractor):
             "date" : extr("Date Added: <b>", "<"),
             "type" : text.remove_html(extr("Album type: <b>", "</b>")),
             "uploader": text.remove_html(extr("Uploaded by: ", "</")),
+            "description": extr("<h2>Description</h2>", "<h2>").strip(),
         }}
 
     def _extract_tracks(self, page):

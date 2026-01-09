@@ -23,8 +23,7 @@ class UrlgalleriesGalleryExtractor(GalleryExtractor):
         _, blog_alt, blog, self.gallery_id = self.groups
         if not blog:
             blog = blog_alt
-        url = "https://urlgalleries.net/b/{}/porn-gallery-{}/?a=10000".format(
-            blog, self.gallery_id)
+        url = f"{self.root}/b/{blog}/porn-gallery-{self.gallery_id}/?a=10000"
 
         with self.request(url, allow_redirects=False, fatal=...) as response:
             if 300 <= response.status_code < 500:
@@ -38,8 +37,8 @@ class UrlgalleriesGalleryExtractor(GalleryExtractor):
         data = self.metadata(page)
         data["count"] = len(imgs)
 
-        root = "https://urlgalleries.net/b/" + blog
-        yield Message.Directory, data
+        root = self.root
+        yield Message.Directory, "", data
         for data["num"], img in enumerate(imgs, 1):
             page = self.request(root + img).text
             url = text.extr(page, "window.location.href = '", "'")
@@ -53,8 +52,8 @@ class UrlgalleriesGalleryExtractor(GalleryExtractor):
             "blog" : text.unescape(extr(' title="', '"')),
             "_rprt": extr(' title="', '"'),  # report button
             "title": text.unescape(extr(' title="', '"').strip()),
-            "date" : text.parse_datetime(
-                extr(" images in gallery | ", "<"), "%B %d, %Y %H:%M"),
+            "date" : self.parse_datetime(
+                extr(" images in gallery | ", "<"), "%B %d, %Y"),
         }
 
     def images(self, page):

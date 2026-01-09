@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-# Copyright 2024 Mike Fährmann
+# Copyright 2024-2025 Mike Fährmann
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License version 2 as
@@ -11,7 +11,6 @@
 from . import booru
 from .. import text, util
 import collections
-import re
 
 BASE_PATTERN = r"(?:https?://)?realbooru\.com"
 
@@ -22,26 +21,38 @@ class RealbooruExtractor(booru.BooruExtractor):
     root = "https://realbooru.com"
 
     def _parse_post(self, post_id):
-        url = "{}/index.php?page=post&s=view&id={}".format(
-            self.root, post_id)
+        url = f"{self.root}/index.php?page=post&s=view&id={post_id}"
         page = self.request(url).text
         extr = text.extract_from(page)
         rating = extr('name="rating" content="', '"')
         extr('class="container"', '>')
 
         post = {
-            "_html"     : page,
             "id"        : post_id,
             "rating"    : "e" if rating == "adult" else (rating or "?")[0],
-            "tags"      : text.unescape(extr(' alt="', '"')),
-            "file_url"  : extr('src="', '"'),
+            "file_url"  : (s := extr('src="', '"')),
+            "_fallback" : (extr('src="', '"'),) if s.endswith(".mp4") else (),
             "created_at": extr(">Posted at ", " by "),
             "uploader"  : extr(">", "<"),
             "score"     : extr('">', "<"),
+            "tags"      : extr('<br />', "</div>"),
             "title"     : extr('id="title" style="width: 100%;" value="', '"'),
             "source"    : extr('d="source" style="width: 100%;" value="', '"'),
         }
 
+        tags_container = post["tags"]
+        tags = []
+        tags_categories = collections.defaultdict(list)
+        pattern = text.re(r'<a class="(?:tag-type-)?([^"]+).*?;tags=([^"&]+)')
+        for tag_type, tag_name in pattern.findall(tags_container):
+            tag = text.unescape(text.unquote(tag_name))
+            tags.append(tag)
+            tags_categories[tag_type].append(tag)
+        for key, value in tags_categories.items():
+            post["tags_" + key] = ", ".join(value)
+        tags.sort()
+
+        post["tags"] = ", ".join(tags)
         post["md5"] = post["file_url"].rpartition("/")[2].partition(".")[0]
         return post
 
@@ -50,7 +61,7 @@ class RealbooruExtractor(booru.BooruExtractor):
         return num
 
     def _prepare(self, post):
-        post["date"] = text.parse_datetime(post["created_at"], "%b, %d %Y")
+        post["date"] = self.parse_datetime(post["created_at"], "%b, %d %Y")
 
     def _pagination(self, params, begin, end):
         url = self.root + "/index.php"
@@ -67,17 +78,6 @@ class RealbooruExtractor(booru.BooruExtractor):
             if cnt < self.per_page:
                 return
             params["pid"] += self.per_page
-
-    def _tags(self, post, _):
-        page = post["_html"]
-        tag_container = text.extr(page, 'id="tagLink"', '</div>')
-        tags = collections.defaultdict(list)
-        pattern = re.compile(
-            r'<a class="(?:tag-type-)?([^"]+).*?;tags=([^"&]+)')
-        for tag_type, tag_name in pattern.findall(tag_container):
-            tags[tag_type].append(text.unescape(text.unquote(tag_name)))
-        for key, value in tags.items():
-            post["tags_" + key] = " ".join(value)
 
 
 class RealbooruTagExtractor(RealbooruExtractor):
@@ -128,7 +128,7 @@ class RealbooruPoolExtractor(RealbooruExtractor):
 
     def metadata(self):
         pool_id = self.groups[0]
-        url = "{}/index.php?page=pool&s=show&id={}".format(self.root, pool_id)
+        url = f"{self.root}/index.php?page=pool&s=show&id={pool_id}"
         page = self.request(url).text
 
         name, pos = text.extract(page, "<h4>Pool: ", "</h4>")

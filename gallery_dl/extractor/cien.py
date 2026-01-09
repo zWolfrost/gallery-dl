@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-# Copyright 2024 Mike Fährmann
+# Copyright 2024-2025 Mike Fährmann
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License version 2 as
@@ -20,7 +20,7 @@ class CienExtractor(Extractor):
     request_interval = (1.0, 2.0)
 
     def __init__(self, match):
-        self.root = text.root_from_url(match.group(0))
+        self.root = text.root_from_url(match[0])
         Extractor.__init__(self, match)
 
     def _init(self):
@@ -34,7 +34,7 @@ class CienExtractor(Extractor):
             page = self.request(url, params=params).text
 
             for card in text.extract_iter(
-                    page, ' class="c-cardCase-item', '</div>'):
+                    page, ' class="c-cardCase-item', '</figure>'):
                 article_url = text.extr(card, ' href="', '"')
                 yield Message.Queue, article_url, data
 
@@ -52,24 +52,25 @@ class CienArticleExtractor(CienExtractor):
     example = "https://ci-en.net/creator/123/article/12345"
 
     def items(self):
-        url = "{}/creator/{}/article/{}".format(
-            self.root, self.groups[0], self.groups[1])
+        author_id, post_id = self.groups
+        url = f"{self.root}/creator/{author_id}/article/{post_id}"
         page = self.request(url, notfound="article").text
 
         files = self._extract_files(page)
         post = self._extract_jsonld(page)[0]
         post["post_url"] = url
-        post["post_id"] = text.parse_int(self.groups[1])
+        post["post_id"] = text.parse_int(post_id)
         post["count"] = len(files)
-        post["date"] = text.parse_datetime(post["datePublished"])
+        post["date"] = self.parse_datetime_iso(post["datePublished"])
 
         try:
+            post["author"]["id"] = text.parse_int(author_id)
             del post["publisher"]
             del post["sameAs"]
         except Exception:
             pass
 
-        yield Message.Directory, post
+        yield Message.Directory, "", post
         for post["num"], file in enumerate(files, 1):
             post.update(file)
             if "extension" not in file:
@@ -121,7 +122,7 @@ class CienArticleExtractor(CienExtractor):
             auth = text.extr(video, ' auth-key="', '"')
 
             file = text.nameext_from_url(name)
-            file["url"] = "{}video-web.mp4?{}".format(path, auth)
+            file["url"] = f"{path}video-web.mp4?{auth}"
             file["type"] = "video"
             files.append(file)
 
@@ -145,12 +146,12 @@ class CienArticleExtractor(CienExtractor):
                 "gallery_id": text.extr(gallery, ' gallery-id="', '"'),
                 "time"      : text.extr(gallery, ' time="', '"'),
             }
-            data = self.request(url, params=params).json()
+            data = self.request_json(url, params=params)
             url = self.root + "/api/creator/gallery/imagePath"
 
             for params["page"], params["file_id"] in enumerate(
                     data["imgList"]):
-                path = self.request(url, params=params).json()["path"]
+                path = self.request_json(url, params=params)["path"]
 
                 file = params.copy()
                 file["url"] = path
@@ -163,7 +164,7 @@ class CienCreatorExtractor(CienExtractor):
     example = "https://ci-en.net/creator/123"
 
     def items(self):
-        url = "{}/creator/{}/article".format(self.root, self.groups[0])
+        url = f"{self.root}/creator/{self.groups[0]}/article"
         params = text.parse_query(self.groups[1])
         params["mode"] = "list"
         return self._pagination_articles(url, params)

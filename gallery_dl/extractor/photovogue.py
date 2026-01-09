@@ -23,16 +23,15 @@ class PhotovogueUserExtractor(Extractor):
 
     def __init__(self, match):
         Extractor.__init__(self, match)
-        self.user_id = match.group(1)
+        self.user_id = match[1]
 
     def items(self):
         for photo in self.photos():
             url = photo["gallery_image"]
             photo["title"] = photo["title"].strip()
-            photo["date"] = text.parse_datetime(
-                photo["date"], "%Y-%m-%dT%H:%M:%S.%f%z")
+            photo["date"] = self.parse_datetime_iso(photo["date"])
 
-            yield Message.Directory, photo
+            yield Message.Directory, "", photo
             yield Message.Url, url, text.nameext_from_url(url, photo)
 
     def photos(self):
@@ -45,7 +44,7 @@ class PhotovogueUserExtractor(Extractor):
         }
 
         while True:
-            data = self.request(url, params=params).json()
+            data = self.request_json(url, params=params)
             yield from data["items"]
 
             if not data["has_next"]:

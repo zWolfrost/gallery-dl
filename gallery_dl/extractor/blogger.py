@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-# Copyright 2019-2023 Mike Fährmann
+# Copyright 2019-2025 Mike Fährmann
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License version 2 as
@@ -10,7 +10,12 @@
 
 from .common import BaseExtractor, Message
 from .. import text, util
-import re
+
+
+def original(url):
+    return (text.re(r"(/|=)(?:[sw]\d+|w\d+-h\d+)(?=/|$)")
+            .sub(r"\1s0", url)
+            .replace("http:", "https:", 1))
 
 
 class BloggerExtractor(BaseExtractor):
@@ -26,21 +31,23 @@ class BloggerExtractor(BaseExtractor):
         self.blog = self.root.rpartition("/")[2]
         self.videos = self.config("videos", True)
 
+        if self.videos:
+            self.findall_video = text.re(
+                r"""src=["'](https?://www\.blogger\.com"""
+                r"""/video\.g\?token=[^"']+)""").findall
+
     def items(self):
         blog = self.api.blog_by_url("http://" + self.blog)
         blog["pages"] = blog["pages"]["totalItems"]
         blog["posts"] = blog["posts"]["totalItems"]
-        blog["date"] = text.parse_datetime(blog["published"])
+        blog["date"] = self.parse_datetime_iso(blog["published"])
         del blog["selfLink"]
 
-        sub = re.compile(r"(/|=)(?:[sw]\d+|w\d+-h\d+)(?=/|$)").sub
-        findall_image = re.compile(
+        findall_image = text.re(
             r'src="(https?://(?:'
             r'blogger\.googleusercontent\.com/img|'
             r'lh\d+(?:-\w+)?\.googleusercontent\.com|'
             r'\d+\.bp\.blogspot\.com)/[^"]+)').findall
-        findall_video = re.compile(
-            r'src="(https?://www\.blogger\.com/video\.g\?token=[^"]+)').findall
         metadata = self.metadata()
 
         for post in self.posts(blog):
@@ -48,30 +55,24 @@ class BloggerExtractor(BaseExtractor):
 
             files = findall_image(content)
             for idx, url in enumerate(files):
-                files[idx] = sub(r"\1s0", url).replace("http:", "https:", 1)
+                files[idx] = original(url)
 
-            if self.videos and 'id="BLOG_video-' in content:
-                page = self.request(post["url"]).text
-                for url in findall_video(page):
-                    page = self.request(url).text
-                    video_config = util.json_loads(text.extr(
-                        page, 'var VIDEO_CONFIG =', '\n'))
-                    files.append(max(
-                        video_config["streams"],
-                        key=lambda x: x["format_id"],
-                    )["play_url"])
+            if self.videos and (
+                    'id="BLOG_video-' in content or
+                    'class="BLOG_video_' in content):
+                self._extract_videos(files, post)
 
             post["author"] = post["author"]["displayName"]
             post["replies"] = post["replies"]["totalItems"]
             post["content"] = text.remove_html(content)
-            post["date"] = text.parse_datetime(post["published"])
+            post["date"] = self.parse_datetime_iso(post["published"])
             del post["selfLink"]
             del post["blog"]
 
             data = {"blog": blog, "post": post}
             if metadata:
                 data.update(metadata)
-            yield Message.Directory, data
+            yield Message.Directory, "", data
 
             for data["num"], url in enumerate(files, 1):
                 data["url"] = url
@@ -82,6 +83,27 @@ class BloggerExtractor(BaseExtractor):
 
     def metadata(self):
         """Return additional metadata"""
+
+    def _extract_videos(self, files, post):
+        url = f"https://{self.blog}/feeds/posts/default/{post['id']}"
+        params = {
+            "alt"          : "json",
+            "v"            : "2",
+            "dynamicviews" : "1",
+            "rewriteforssl": "true",
+        }
+
+        data = self.request_json(url, params=params)
+        html = data["entry"]["content"]["$t"]
+
+        for url in self.findall_video(html):
+            page = self.request(url).text
+            video_config = util.json_loads(text.extr(
+                page, 'var VIDEO_CONFIG =', '\n'))
+            files.append(max(
+                video_config["streams"],
+                key=lambda x: x["format_id"],
+            )["play_url"])
 
 
 BASE_PATTERN = BloggerExtractor.update({
@@ -98,12 +120,8 @@ class BloggerPostExtractor(BloggerExtractor):
     pattern = BASE_PATTERN + r"(/\d\d\d\d/\d\d/[^/?#]+\.html)"
     example = "https://BLOG.blogspot.com/1970/01/TITLE.html"
 
-    def __init__(self, match):
-        BloggerExtractor.__init__(self, match)
-        self.path = match.group(match.lastindex)
-
     def posts(self, blog):
-        return (self.api.post_by_path(blog["id"], self.path),)
+        return (self.api.post_by_path(blog["id"], self.groups[-1]),)
 
 
 class BloggerBlogExtractor(BloggerExtractor):
@@ -122,15 +140,12 @@ class BloggerSearchExtractor(BloggerExtractor):
     pattern = BASE_PATTERN + r"/search/?\?q=([^&#]+)"
     example = "https://BLOG.blogspot.com/search?q=QUERY"
 
-    def __init__(self, match):
-        BloggerExtractor.__init__(self, match)
-        self.query = text.unquote(match.group(match.lastindex))
+    def metadata(self):
+        self.query = query = text.unquote(self.groups[-1])
+        return {"query": query}
 
     def posts(self, blog):
         return self.api.blog_search(blog["id"], self.query)
-
-    def metadata(self):
-        return {"query": self.query}
 
 
 class BloggerLabelExtractor(BloggerExtractor):
@@ -139,21 +154,18 @@ class BloggerLabelExtractor(BloggerExtractor):
     pattern = BASE_PATTERN + r"/search/label/([^/?#]+)"
     example = "https://BLOG.blogspot.com/search/label/LABEL"
 
-    def __init__(self, match):
-        BloggerExtractor.__init__(self, match)
-        self.label = text.unquote(match.group(match.lastindex))
+    def metadata(self):
+        self.label = label = text.unquote(self.groups[-1])
+        return {"label": label}
 
     def posts(self, blog):
         return self.api.blog_posts(blog["id"], self.label)
 
-    def metadata(self):
-        return {"label": self.label}
-
 
 class BloggerAPI():
-    """Minimal interface for the Blogger v3 API
+    """Minimal interface for the Blogger API v3
 
-    Ref: https://developers.google.com/blogger
+    https://developers.google.com/blogger
     """
     API_KEY = "AIzaSyCN9ax34oMMyM07g_M-5pjeDp_312eITK8"
 
@@ -162,27 +174,27 @@ class BloggerAPI():
         self.api_key = extractor.config("api-key") or self.API_KEY
 
     def blog_by_url(self, url):
-        return self._call("blogs/byurl", {"url": url}, "blog")
+        return self._call("/blogs/byurl", {"url": url}, "blog")
 
     def blog_posts(self, blog_id, label=None):
-        endpoint = "blogs/{}/posts".format(blog_id)
+        endpoint = f"/blogs/{blog_id}/posts"
         params = {"labels": label}
         return self._pagination(endpoint, params)
 
     def blog_search(self, blog_id, query):
-        endpoint = "blogs/{}/posts/search".format(blog_id)
+        endpoint = f"/blogs/{blog_id}/posts/search"
         params = {"q": query}
         return self._pagination(endpoint, params)
 
     def post_by_path(self, blog_id, path):
-        endpoint = "blogs/{}/posts/bypath".format(blog_id)
+        endpoint = f"/blogs/{blog_id}/posts/bypath"
         return self._call(endpoint, {"path": path}, "post")
 
     def _call(self, endpoint, params, notfound=None):
-        url = "https://www.googleapis.com/blogger/v3/" + endpoint
+        url = "https://www.googleapis.com/blogger/v3" + endpoint
         params["key"] = self.api_key
-        return self.extractor.request(
-            url, params=params, notfound=notfound).json()
+        return self.extractor.request_json(
+            url, params=params, notfound=notfound)
 
     def _pagination(self, endpoint, params):
         while True:

@@ -5,7 +5,6 @@
 # published by the Free Software Foundation.
 
 from gallery_dl.extractor import hentaifoundry
-import datetime
 
 
 __tests__ = (
@@ -91,6 +90,7 @@ __tests__ = (
     "#sha1_content": "91bf01497c39254b6dfb234a18e8f01629c77fd1",
 
     "artist"     : "Tenpura",
+    "categories" : ["Anime & Manga"],
     "date"       : "dt:2016-02-22 14:41:19",
     "description": "Thank you!",
     "height"     : 700,
@@ -118,9 +118,10 @@ __tests__ = (
     "#comment" : "SWF / rumble embed (#4641)",
     "#category": ("", "hentaifoundry", "image"),
     "#class"   : hentaifoundry.HentaifoundryImageExtractor,
-    "#urls"    : "https://pictures.hentai-foundry.com/s/Soloid/186714/Soloid-186714-Osaloop.swf",
+    "#results" : "https://pictures.hentai-foundry.com/s/Soloid/186714/Soloid-186714-Osaloop.swf",
 
     "artist"     : "Soloid",
+    "categories" : ["Misc"],
     "date"       : "dt:2013-02-07 17:25:54",
     "description": "It took me ages.\nI hope you'll like it.\nSorry for the bad quality, I made it on after effect because Flash works like shit when you have 44 layers to animate, and the final ae SWF file is 55mo big.",
     "extension"  : "swf",
@@ -142,6 +143,24 @@ __tests__ = (
     "user"       : "Soloid",
     "views"      : range(45000, 60000),
     "width"      : 613,
+},
+
+{
+    "#url"     : "https://www.hentai-foundry.com/pictures/user/Soloid/186714/Osaloop",
+    "#comment" : "HTML 'description'",
+    "#class"   : hentaifoundry.HentaifoundryImageExtractor,
+    "#options" : {"descriptions": "html"},
+    "#results" : "https://pictures.hentai-foundry.com/s/Soloid/186714/Soloid-186714-Osaloop.swf",
+
+    "description": """\
+It took me ages.<br />
+I hope you&#039;ll like it.<br />
+Sorry for the bad quality, I made it on after effect because Flash works like shit when you have 44 layers to animate, and the final ae SWF file is 55mo big.\
+""",
+    "extension"  : "swf",
+    "index"      : 186714,
+    "tags"       : ["soloid"],
+    "title"      : "Osaloop",
 },
 
 {
@@ -172,7 +191,7 @@ __tests__ = (
     "author"     : "SnowWolf35",
     "chapters"   : int,
     "comments"   : int,
-    "date"       : datetime.datetime,
+    "date"       : "type:datetime",
     "description": str,
     "index"      : int,
     "rating"     : int,
@@ -185,12 +204,57 @@ __tests__ = (
 },
 
 {
+    "#url"     : "https://www.hentai-foundry.com/stories/user/Likelymouse",
+    "#class"   : hentaifoundry.HentaifoundryStoriesExtractor,
+    "#range"   : "2",
+    "#results" : "https://www.hentai-foundry.com/stories/user/Likelymouse/77892/The-Sweater-and-Scarf-Public-Investigators-Part-1.pdf",
+
+    "author"     : "Likelymouse",
+    "categories" : ["Original", "Neko Shoujo & Kemonomimi"],
+    "chapters"   : 11,
+    "comments"   : 0,
+    "date"       : "dt:2025-10-04 00:00:00",
+    "extension"  : "pdf",
+    "filename"   : "The-Sweater-and-Scarf-Public-Investigators-Part-1",
+    "index"      : 77892,
+    "rating"     : 0,
+    "src"        : "https://www.hentai-foundry.com/stories/user/Likelymouse/77892/The-Sweater-and-Scarf-Public-Investigators-Part-1.pdf",
+    "status"     : "Complete",
+    "title"      : "The Sweater and Scarf Public Investigators, Part 1",
+    "user"       : "Likelymouse",
+    "views"      : range(100, 10_000),
+    "words"      : 47031,
+    "description": """\
+<div style="text-align:center"><a href="https://imgur.com/a/uRDss5c"><img src="https://i.imgur.com/SCWI09e.jpeg" alt="135x240"/></a><br />
+<br />
+<a href="https://imgur.com/a/uRDss5c">Cover Page (Made by me)</a></div><br />
+Follow 22 y/o Puffy Penelope as she descends into degeneracy, mastering her new found succubi powers.<br />
+<div style="text-align:left"></div><br />
+<div style="text-align:left">MAJOR Kinks include: Exhibitionism and voyeurism, all fours nudity, pet play, cum play, free use, and hyper-sexuality.</div><br />
+<div style="text-align:left"></div><br />
+<br />
+<br />
+<div style="text-align:center"></div>\
+""",
+    "ratings"    : [
+        "Nudity",
+        "Violence",
+        "Profanity",
+        "Sexual content",
+        "Contains male nudity",
+        "Contains female nudity",
+        "Non-consensual/Rape/Forced",
+    ],
+},
+
+{
     "#url"     : "https://www.hentai-foundry.com/stories/user/SnowWolf35/26416/Overwatch-High-Chapter-Voting-Location",
     "#category": ("", "hentaifoundry", "story"),
     "#class"   : hentaifoundry.HentaifoundryStoryExtractor,
     "#sha1_url": "5a67cfa8c3bf7634c8af8485dd07c1ea74ee0ae8",
 
     "title": "Overwatch High Chapter Voting Location",
+    "categories": ["Games", "Overwatch"],
 },
 
 )

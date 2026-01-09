@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-# Copyright 2015-2023 Mike Fährmann
+# Copyright 2015-2025 Mike Fährmann
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License version 2 as
@@ -103,14 +103,12 @@ def open_extern():
         openers = ("explorer", "notepad")
     else:
         openers = ("xdg-open", "open")
-        editor = os.environ.get("EDITOR")
-        if editor:
+        if editor := os.environ.get("EDITOR"):
             openers = (editor,) + openers
 
     import shutil
     for opener in openers:
-        opener = shutil.which(opener)
-        if opener:
+        if opener := shutil.which(opener):
             break
     else:
         log.warning("Unable to find a program to open '%s' with", path)
@@ -155,20 +153,46 @@ def status():
 
         paths.append((path, status))
 
-    fmt = "{{:<{}}} : {{}}\n".format(
-        max(len(p[0]) for p in paths)).format
+    fmt = f"{{:<{max(len(p[0]) for p in paths)}}} : {{}}\n".format
 
     for path, status in paths:
         stdout_write(fmt(path, status))
 
 
-def load(files=None, strict=False, loads=util.json_loads):
+def remap_categories():
+    opts = _config.get("extractor")
+    if not opts:
+        return
+
+    cmap = opts.get("config-map")
+    if cmap is None:
+        cmap = (
+            ("coomerparty" , "coomer"),
+            ("kemonoparty" , "kemono"),
+            ("giantessbooru", "sizebooru"),
+            ("koharu"      , "schalenetwork"),
+            ("naver"       , "naver-blog"),
+            ("chzzk"       , "naver-chzzk"),
+            ("naverwebtoon", "naver-webtoon"),
+            ("pixiv"       , "pixiv-novel"),
+        )
+    elif not cmap:
+        return
+    elif isinstance(cmap, dict):
+        cmap = cmap.items()
+
+    for old, new in cmap:
+        if old in opts and new not in opts:
+            opts[new] = opts[old]
+
+
+def load(files=None, strict=False, loads=util.json_loads, conf=_config):
     """Load JSON configuration files"""
     for pathfmt in files or _default_configs:
         path = util.expand_path(pathfmt)
         try:
             with open(path, encoding="utf-8") as fp:
-                conf = loads(fp.read())
+                config = loads(fp.read())
         except OSError as exc:
             if strict:
                 log.error(exc)
@@ -179,18 +203,17 @@ def load(files=None, strict=False, loads=util.json_loads):
             if strict:
                 raise SystemExit(2)
         else:
-            if not _config:
-                _config.update(conf)
+            if not conf:
+                conf.update(config)
             else:
-                util.combine_dict(_config, conf)
+                util.combine_dict(conf, config)
             _files.append(pathfmt)
 
-            if "subconfigs" in conf:
-                subconfigs = conf["subconfigs"]
-                if subconfigs:
+            if "subconfigs" in config:
+                if subconfigs := config["subconfigs"]:
                     if isinstance(subconfigs, str):
                         subconfigs = (subconfigs,)
-                    load(subconfigs, strict, loads)
+                    load(subconfigs, strict, loads, conf)
 
 
 def clear():
@@ -259,8 +282,7 @@ def accumulate(path, key, conf=_config):
     result = []
     try:
         if key in conf:
-            value = conf[key]
-            if value:
+            if value := conf[key]:
                 if isinstance(value, list):
                     result.extend(value)
                 else:
@@ -268,8 +290,7 @@ def accumulate(path, key, conf=_config):
         for p in path:
             conf = conf[p]
             if key in conf:
-                value = conf[key]
-                if value:
+                if value := conf[key]:
                     if isinstance(value, list):
                         result[:0] = value
                     else:
@@ -322,6 +343,7 @@ class apply():
             set(path, key, value)
 
     def __exit__(self, exc_type, exc_value, traceback):
+        self.original.reverse()
         for path, key, value in self.original:
             if value is util.SENTINEL:
                 unset(path, key)

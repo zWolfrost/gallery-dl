@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-# Copyright 2016-2023 Mike Fährmann
+# Copyright 2016-2025 Mike Fährmann
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License version 2 as
@@ -26,15 +26,15 @@ class LusciousExtractor(Extractor):
             "variables"    : variables,
         }
         response = self.request(
-            "{}/graphql/nobatch/?operationName={}".format(self.root, op),
+            f"{self.root}/graphql/nobatch/?operationName={op}",
             method="POST", json=data, fatal=False,
         )
 
         if response.status_code >= 400:
             self.log.debug("Server response: %s", response.text)
-            raise exception.StopExtraction(
-                "GraphQL query failed ('%s %s')",
-                response.status_code, response.reason)
+            raise exception.AbortExtraction(
+                f"GraphQL query failed "
+                f"('{response.status_code} {response.reason}')")
 
         return response.json()["data"]
 
@@ -51,14 +51,14 @@ class LusciousAlbumExtractor(LusciousExtractor):
 
     def __init__(self, match):
         LusciousExtractor.__init__(self, match)
-        self.album_id = match.group(1)
+        self.album_id = match[1]
 
     def _init(self):
         self.gif = self.config("gif", False)
 
     def items(self):
         album = self.metadata()
-        yield Message.Directory, {"album": album}
+        yield Message.Directory, "", {"album": album}
         for num, image in enumerate(self.images(), 1):
             image["num"] = num
             image["album"] = album
@@ -69,7 +69,7 @@ class LusciousAlbumExtractor(LusciousExtractor):
                 image["thumbnail"] = ""
 
             image["tags"] = [item["text"] for item in image["tags"]]
-            image["date"] = text.parse_timestamp(image["created"])
+            image["date"] = self.parse_timestamp(image["created"])
             image["id"] = text.parse_int(image["id"])
 
             url = (image["url_to_original"] or image["url_to_video"]
@@ -188,7 +188,7 @@ fragment AlbumStandard on Album {
         album["created_by"] = album["created_by"]["display_name"]
 
         album["id"] = text.parse_int(album["id"])
-        album["date"] = text.parse_timestamp(album["created"])
+        album["date"] = self.parse_timestamp(album["created"])
 
         return album
 
@@ -280,7 +280,7 @@ class LusciousSearchExtractor(LusciousExtractor):
 
     def __init__(self, match):
         LusciousExtractor.__init__(self, match)
-        self.query = match.group(1)
+        self.query = match[1]
 
     def items(self):
         query = text.parse_query(self.query)

@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-# Copyright 2014-2023 Mike Fährmann
+# Copyright 2014-2025 Mike Fährmann
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License version 2 as
@@ -12,8 +12,9 @@ import time
 import mimetypes
 from requests.exceptions import RequestException, ConnectionError, Timeout
 from .common import DownloaderBase
-from .. import text, util
+from .. import text, util, output, exception
 from ssl import SSLError
+FLAGS = util.FLAGS
 
 
 class HttpDownloader(DownloaderBase):
@@ -29,6 +30,7 @@ class HttpDownloader(DownloaderBase):
         self.metadata = extractor.config("http-metadata")
         self.progress = self.config("progress", 3.0)
         self.validate = self.config("validate", True)
+        self.validate_html = self.config("validate-html", True)
         self.headers = self.config("headers")
         self.minsize = self.config("filesize-min")
         self.maxsize = self.config("filesize-max")
@@ -38,6 +40,7 @@ class HttpDownloader(DownloaderBase):
         self.verify = self.config("verify", extractor._verify)
         self.mtime = self.config("mtime", True)
         self.rate = self.config("rate")
+        interval_429 = self.config("sleep-429")
 
         if not self.config("consume-content", False):
             # this resets the underlying TCP connection, and therefore
@@ -67,24 +70,32 @@ class HttpDownloader(DownloaderBase):
                 chunk_size = 32768
             self.chunk_size = chunk_size
         if self.rate:
-            rate = text.parse_bytes(self.rate)
-            if rate:
-                if rate < self.chunk_size:
-                    self.chunk_size = rate
-                self.rate = rate
+            func = util.build_selection_func(self.rate, 0, text.parse_bytes)
+            if rmax := func.args[1] if hasattr(func, "args") else func():
+                if rmax < self.chunk_size:
+                    # reduce chunk_size to allow for one iteration each second
+                    self.chunk_size = rmax
+                self.rate = func
                 self.receive = self._receive_rate
             else:
                 self.log.warning("Invalid rate limit (%r)", self.rate)
+                self.rate = False
         if self.progress is not None:
             self.receive = self._receive_rate
             if self.progress < 0.0:
                 self.progress = 0.0
+        if interval_429 is None:
+            self.interval_429 = extractor._interval_429
+        else:
+            self.interval_429 = util.build_duration_func(interval_429)
 
     def download(self, url, pathfmt):
         try:
             return self._download_impl(url, pathfmt)
-        except Exception:
-            print()
+        except Exception as exc:
+            if self.downloading:
+                output.stderr_write("\n")
+            self.log.traceback(exc)
             raise
         finally:
             # remove file from incomplete downloads
@@ -93,7 +104,7 @@ class HttpDownloader(DownloaderBase):
 
     def _download_impl(self, url, pathfmt):
         response = None
-        tries = 0
+        tries = code = 0
         msg = ""
 
         metadata = self.metadata
@@ -111,10 +122,17 @@ class HttpDownloader(DownloaderBase):
                 if response:
                     self.release_conn(response)
                     response = None
+
                 self.log.warning("%s (%s/%s)", msg, tries, self.retries+1)
                 if tries > self.retries:
                     return False
-                time.sleep(tries)
+
+                if code == 429 and self.interval_429:
+                    s = self.interval_429()
+                    time.sleep(s if s > tries else tries)
+                else:
+                    time.sleep(tries)
+                code = 0
 
             tries += 1
             file_header = None
@@ -122,16 +140,14 @@ class HttpDownloader(DownloaderBase):
             # collect HTTP headers
             headers = {"Accept": "*/*"}
             #   file-specific headers
-            extra = kwdict.get("_http_headers")
-            if extra:
+            if extra := kwdict.get("_http_headers"):
                 headers.update(extra)
             #   general headers
             if self.headers:
                 headers.update(self.headers)
             #   partial content
-            file_size = pathfmt.part_size()
-            if file_size:
-                headers["Range"] = "bytes={}-".format(file_size)
+            if file_size := pathfmt.part_size():
+                headers["Range"] = f"bytes={file_size}-"
 
             # connect to (remote) source
             try:
@@ -149,7 +165,7 @@ class HttpDownloader(DownloaderBase):
                     reason = exc.args[0].reason
                     cls = reason.__class__.__name__
                     pre, _, err = str(reason.args[-1]).partition(":")
-                    msg = "{}: {}".format(cls, (err or pre).lstrip())
+                    msg = f"{cls}: {(err or pre).lstrip()}"
                 except Exception:
                     msg = str(exc)
                 continue
@@ -171,7 +187,12 @@ class HttpDownloader(DownloaderBase):
             elif code == 416 and file_size:  # Requested Range Not Satisfiable
                 break
             else:
-                msg = "'{} {}' for '{}'".format(code, response.reason, url)
+                msg = f"'{code} {response.reason}' for '{url}'"
+
+                challenge = util.detect_challenge(response)
+                if challenge is not None:
+                    self.log.warning(challenge)
+
                 if code in self.retry_codes or 500 <= code < 600:
                     continue
                 retry = kwdict.get("_http_retry")
@@ -182,8 +203,8 @@ class HttpDownloader(DownloaderBase):
                 return False
 
             # check for invalid responses
-            validate = kwdict.get("_http_validate")
-            if validate and self.validate:
+            if self.validate and \
+                    (validate := kwdict.get("_http_validate")) is not None:
                 try:
                     result = validate(response)
                 except Exception:
@@ -197,10 +218,22 @@ class HttpDownloader(DownloaderBase):
                     self.release_conn(response)
                     self.log.warning("Invalid response")
                     return False
+            if self.validate_html and response.headers.get(
+                    "content-type", "").startswith("text/html") and \
+                    pathfmt.extension not in ("html", "htm"):
+                if response.history:
+                    self.log.warning("HTTP redirect to '%s'", response.url)
+                else:
+                    self.log.warning("HTML response")
+                return False
 
             # check file size
             size = text.parse_int(size, None)
             if size is not None:
+                if not size:
+                    self.release_conn(response)
+                    self.log.warning("Empty file")
+                    return False
                 if self.minsize and size < self.minsize:
                     self.release_conn(response)
                     self.log.warning(
@@ -248,19 +281,28 @@ class HttpDownloader(DownloaderBase):
 
             content = response.iter_content(self.chunk_size)
 
+            validate_sig = kwdict.get("_http_signature")
+            validate_ext = (adjust_extension and
+                            pathfmt.extension in SIGNATURE_CHECKS)
+
             # check filename extension against file header
-            if adjust_extension and not offset and \
-                    pathfmt.extension in SIGNATURE_CHECKS:
+            if not offset and (validate_ext or validate_sig):
                 try:
                     file_header = next(
                         content if response.raw.chunked
                         else response.iter_content(16), b"")
                 except (RequestException, SSLError) as exc:
                     msg = str(exc)
-                    print()
                     continue
-                if self._adjust_extension(pathfmt, file_header) and \
-                        pathfmt.exists():
+                if validate_sig:
+                    result = validate_sig(file_header)
+                    if result is not True:
+                        self.release_conn(response)
+                        self.log.warning(
+                            result or "Invalid file signature bytes")
+                        return False
+                if validate_ext and self._adjust_extension(
+                        pathfmt, file_header) and pathfmt.exists():
                     pathfmt.temppath = ""
                     response.close()
                     return True
@@ -277,6 +319,9 @@ class HttpDownloader(DownloaderBase):
             # download content
             self.downloading = True
             with pathfmt.open(mode) as fp:
+                if fp is None:
+                    # '.part' file no longer exists
+                    break
                 if file_header:
                     fp.write(file_header)
                     offset += len(file_header)
@@ -291,23 +336,37 @@ class HttpDownloader(DownloaderBase):
                     self.receive(fp, content, size, offset)
                 except (RequestException, SSLError) as exc:
                     msg = str(exc)
-                    print()
+                    output.stderr_write("\n")
                     continue
+                except exception.StopExtraction:
+                    response.close()
+                    return False
+                except exception.ControlException:
+                    response.close()
+                    raise
 
                 # check file size
-                if size and fp.tell() < size:
-                    msg = "file size mismatch ({} < {})".format(
-                        fp.tell(), size)
-                    print()
+                if size and (fsize := fp.tell()) < size:
+                    if (segmented := kwdict.get("_http_segmented")) and \
+                            segmented is True or segmented == fsize:
+                        tries -= 1
+                        msg = "Resuming segmented download"
+                        output.stdout_write("\r")
+                    else:
+                        msg = f"file size mismatch ({fsize} < {size})"
+                        output.stderr_write("\n")
                     continue
 
             break
 
         self.downloading = False
         if self.mtime:
-            kwdict.setdefault("_mtime", response.headers.get("Last-Modified"))
+            if "_http_lastmodified" in kwdict:
+                kwdict["_mtime_http"] = kwdict["_http_lastmodified"]
+            else:
+                kwdict["_mtime_http"] = response.headers.get("Last-Modified")
         else:
-            kwdict["_mtime"] = None
+            kwdict["_mtime_http"] = None
 
         return True
 
@@ -317,20 +376,22 @@ class HttpDownloader(DownloaderBase):
             for _ in response.iter_content(self.chunk_size):
                 pass
         except (RequestException, SSLError) as exc:
-            print()
+            output.stderr_write("\n")
             self.log.debug(
                 "Unable to consume response body (%s: %s); "
                 "closing the connection anyway", exc.__class__.__name__, exc)
             response.close()
 
-    @staticmethod
-    def receive(fp, content, bytes_total, bytes_start):
+    def receive(self, fp, content, bytes_total, bytes_start):
         write = fp.write
         for data in content:
             write(data)
 
+            if FLAGS.DOWNLOAD is not None:
+                FLAGS.process("DOWNLOAD")
+
     def _receive_rate(self, fp, content, bytes_total, bytes_start):
-        rate = self.rate
+        rate = self.rate() if self.rate else None
         write = fp.write
         progress = self.progress
 
@@ -343,6 +404,9 @@ class HttpDownloader(DownloaderBase):
 
             write(data)
 
+            if FLAGS.DOWNLOAD is not None:
+                FLAGS.process("DOWNLOAD")
+
             if progress is not None:
                 if time_elapsed > progress:
                     self.out.progress(
@@ -351,7 +415,7 @@ class HttpDownloader(DownloaderBase):
                         int(bytes_downloaded / time_elapsed),
                     )
 
-            if rate:
+            if rate is not None:
                 time_expected = bytes_downloaded / rate
                 if time_expected > time_elapsed:
                     time.sleep(time_expected - time_elapsed)
@@ -359,7 +423,7 @@ class HttpDownloader(DownloaderBase):
     def _find_extension(self, response):
         """Get filename extension from MIME type"""
         mtype = response.headers.get("Content-Type", "image/jpeg")
-        mtype = mtype.partition(";")[0]
+        mtype = mtype.partition(";")[0].lower()
 
         if "/" not in mtype:
             mtype = "image/" + mtype
@@ -367,19 +431,20 @@ class HttpDownloader(DownloaderBase):
         if mtype in MIME_TYPES:
             return MIME_TYPES[mtype]
 
-        ext = mimetypes.guess_extension(mtype, strict=False)
-        if ext:
+        if ext := mimetypes.guess_extension(mtype, strict=False):
             return ext[1:]
 
         self.log.warning("Unknown MIME type '%s'", mtype)
         return "bin"
 
-    @staticmethod
-    def _adjust_extension(pathfmt, file_header):
+    def _adjust_extension(self, pathfmt, file_header):
         """Check filename extension against file header"""
         if not SIGNATURE_CHECKS[pathfmt.extension](file_header):
             for ext, check in SIGNATURE_CHECKS.items():
                 if check(file_header):
+                    self.log.debug(
+                        "Adjusting filename extension of '%s' to '%s'",
+                        pathfmt.filename, ext)
                     pathfmt.set_extension(ext)
                     pathfmt.build_path()
                     return True
@@ -419,6 +484,12 @@ MIME_TYPES = {
     "audio/webm" : "webm",
     "audio/ogg"  : "ogg",
     "audio/mpeg" : "mp3",
+    "audio/aac"  : "aac",
+    "audio/x-aac": "aac",
+
+    "application/vnd.apple.mpegurl": "m3u8",
+    "application/x-mpegurl"        : "m3u8",
+    "application/dash+xml"         : "mpd",
 
     "application/zip"  : "zip",
     "application/x-zip": "zip",
@@ -432,11 +503,19 @@ MIME_TYPES = {
     "application/x-pdf": "pdf",
     "application/x-shockwave-flash": "swf",
 
+    "text/html": "html",
+
     "application/ogg": "ogg",
     # https://www.iana.org/assignments/media-types/model/obj
     "model/obj": "obj",
     "application/octet-stream": "bin",
 }
+
+
+def _signature_html(s):
+    s = s[:14].lstrip()
+    return s and b"<!doctype html".startswith(s.lower())
+
 
 # https://en.wikipedia.org/wiki/List_of_file_signatures
 SIGNATURE_CHECKS = {
@@ -463,11 +542,16 @@ SIGNATURE_CHECKS = {
                        s[8:12] == b"WAVE"),
     "mp3" : lambda s: (s[0:3] == b"ID3" or
                        s[0:2] in (b"\xFF\xFB", b"\xFF\xF3", b"\xFF\xF2")),
+    "aac" : lambda s: s[0:2] in (b"\xFF\xF9", b"\xFF\xF1"),
+    "m3u8": lambda s: s[0:7] == b"#EXTM3U",
+    "mpd" : lambda s: b"<MPD" in s,
     "zip" : lambda s: s[0:4] in (b"PK\x03\x04", b"PK\x05\x06", b"PK\x07\x08"),
     "rar" : lambda s: s[0:6] == b"Rar!\x1A\x07",
     "7z"  : lambda s: s[0:6] == b"\x37\x7A\xBC\xAF\x27\x1C",
     "pdf" : lambda s: s[0:5] == b"%PDF-",
     "swf" : lambda s: s[0:3] in (b"CWS", b"FWS"),
+    "html": _signature_html,
+    "htm" : _signature_html,
     "blend": lambda s: s[0:7] == b"BLENDER",
     # unfortunately the Wavefront .obj format doesn't have a signature,
     # so we check for the existence of Blender's comment

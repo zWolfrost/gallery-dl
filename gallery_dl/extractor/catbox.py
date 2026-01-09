@@ -26,9 +26,9 @@ class CatboxAlbumExtractor(GalleryExtractor):
     def metadata(self, page):
         extr = text.extract_from(page)
         return {
-            "album_id"   : self.gallery_url.rpartition("/")[2],
+            "album_id"   : self.page_url.rpartition("/")[2],
             "album_name" : text.unescape(extr("<h1>", "<")),
-            "date"       : text.parse_datetime(extr(
+            "date"       : self.parse_datetime(extr(
                 "<p>Created ", "<"), "%B %d %Y"),
             "description": text.unescape(extr("<p>", "<")),
         }
@@ -52,5 +52,5 @@ class CatboxFileExtractor(Extractor):
     def items(self):
         url = text.ensure_http_scheme(self.url)
         file = text.nameext_from_url(url, {"url": url})
-        yield Message.Directory, file
+        yield Message.Directory, "", file
         yield Message.Url, url, file

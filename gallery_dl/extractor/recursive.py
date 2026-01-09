@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-# Copyright 2015-2023 Mike Fährmann
+# Copyright 2015-2025 Mike Fährmann
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License version 2 as
@@ -10,7 +10,6 @@
 
 from .common import Extractor, Message
 from .. import text
-import re
 
 
 class RecursiveExtractor(Extractor):
@@ -23,10 +22,10 @@ class RecursiveExtractor(Extractor):
         url = self.url.partition(":")[2]
 
         if url.startswith("file://"):
-            with open(url[7:]) as fp:
+            with open(url[7:], encoding="utf-8") as fp:
                 page = fp.read()
         else:
             page = self.request(text.ensure_http_scheme(url)).text
 
-        for match in re.finditer(r"https?://[^\s\"']+", page):
-            yield Message.Queue, match.group(0), {}
+        for match in text.re(r"https?://[^\s\"']+").finditer(page):
+            yield Message.Queue, match[0], {}

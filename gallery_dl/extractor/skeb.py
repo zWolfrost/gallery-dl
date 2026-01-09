@@ -6,9 +6,11 @@
 
 """Extractors for https://skeb.jp/"""
 
-from .common import Extractor, Message
+from .common import Extractor, Message, Dispatch
 from .. import text
-import itertools
+
+BASE_PATTERN = r"(?:https?://)?skeb\.jp"
+USER_PATTERN = BASE_PATTERN + r"/@([^/?#]+)"
 
 
 class SkebExtractor(Extractor):
@@ -18,10 +20,6 @@ class SkebExtractor(Extractor):
     filename_fmt = "{post_num}_{file_id}.{extension}"
     archive_fmt = "{post_num}_{_file_id}_{content_category}"
     root = "https://skeb.jp"
-
-    def __init__(self, match):
-        Extractor.__init__(self, match)
-        self.user_name = match.group(1)
 
     def _init(self):
         self.thumbnails = self.config("thumbnails", False)
@@ -48,19 +46,24 @@ class SkebExtractor(Extractor):
     def items(self):
         metadata = self.metadata()
         for user_name, post_num in self.posts():
-            response, post = self._get_post_data(user_name, post_num)
+            try:
+                response, post = self._get_post_data(user_name, post_num)
+            except Exception as exc:
+                self.log.error("@%s/%s: %s: %s", user_name, post_num,
+                               exc.__class__.__name__, exc)
+                continue
             if metadata:
                 post.update(metadata)
 
             files = self._get_files_from_post(response)
             post["count"] = len(files)
-            yield Message.Directory, post
+            yield Message.Directory, "", post
             for post["num"], file in enumerate(files, 1):
                 post.update(file)
                 url = file["file_url"]
                 yield Message.Url, url, text.nameext_from_url(url, post)
 
-    def _items_users(self):
+    def items_users(self):
         base = self.root + "/@"
         for user in self.users():
             user["_extractor"] = SkebUserExtractor
@@ -76,8 +79,8 @@ class SkebExtractor(Extractor):
         params["offset"] = 0
 
         while True:
-            posts = self.request(
-                url, params=params, headers=self.headers).json()
+            posts = self.request_json(
+                url, params=params, headers=self.headers)
 
             for post in posts:
                 parts = post["path"].split("/")
@@ -95,13 +98,13 @@ class SkebExtractor(Extractor):
             params["offset"] += 30
 
     def _pagination_users(self, endpoint, params):
-        url = "{}/api{}".format(self.root, endpoint)
+        url = f"{self.root}/api{endpoint}"
         params["offset"] = 0
         params["limit"] = 90
 
         while True:
-            data = self.request(
-                url, params=params, headers=self.headers).json()
+            data = self.request_json(
+                url, params=params, headers=self.headers)
             yield from data
 
             if len(data) < params["limit"]:
@@ -109,9 +112,8 @@ class SkebExtractor(Extractor):
             params["offset"] += params["limit"]
 
     def _get_post_data(self, user_name, post_num):
-        url = "{}/api/users/{}/works/{}".format(
-            self.root, user_name, post_num)
-        resp = self.request(url, headers=self.headers).json()
+        url = f"{self.root}/api/users/{user_name}/works/{post_num}"
+        resp = self.request_json(url, headers=self.headers)
         creator = resp["creator"]
         post = {
             "post_id"          : resp["id"],
@@ -158,8 +160,7 @@ class SkebExtractor(Extractor):
             })
 
         if self.article and "article_image_url" in resp:
-            url = resp["article_image_url"]
-            if url:
+            if url := resp["article_image_url"]:
                 files.append({
                     "content_category": "article",
                     "file_id" : "article",
@@ -179,7 +180,7 @@ class SkebExtractor(Extractor):
                     "height"    : info["height"],
                     "byte_size" : info["byte_size"],
                     "duration"  : info["duration"],
-                    "frame_rate": info["frame_rate"],
+                    "frame_rate": info.get("frame_rate"),
                     "software"  : info["software"],
                     "extension" : info["extension"],
                     "is_movie"  : info["is_movie"],
@@ -193,44 +194,63 @@ class SkebExtractor(Extractor):
 class SkebPostExtractor(SkebExtractor):
     """Extractor for a single skeb post"""
     subcategory = "post"
-    pattern = r"(?:https?://)?skeb\.jp/@([^/?#]+)/works/(\d+)"
+    pattern = USER_PATTERN + r"/works/(\d+)"
     example = "https://skeb.jp/@USER/works/123"
 
-    def __init__(self, match):
-        SkebExtractor.__init__(self, match)
-        self.post_num = match.group(2)
+    def posts(self):
+        return (self.groups,)
+
+
+class SkebWorksExtractor(SkebExtractor):
+    """Extractor for a skeb user's works"""
+    subcategory = "works"
+    pattern = USER_PATTERN + r"/works"
+    example = "https://skeb.jp/@USER/works"
 
     def posts(self):
-        return ((self.user_name, self.post_num),)
+        url = f"{self.root}/api/users/{self.groups[0]}/works"
+        params = {"role": "creator", "sort": "date"}
+        return self._pagination(url, params)
 
 
-class SkebUserExtractor(SkebExtractor):
-    """Extractor for all posts from a skeb user"""
-    subcategory = "user"
-    pattern = r"(?:https?://)?skeb\.jp/@([^/?#]+)/?$"
+class SkebSentrequestsExtractor(SkebExtractor):
+    """Extractor for a skeb user's sent requests"""
+    subcategory = "sentrequests"
+    pattern = USER_PATTERN + r"/sent[ _-]?requests"
+    example = "https://skeb.jp/@USER/sentrequests"
+
+    def posts(self):
+        url = f"{self.root}/api/users/{self.groups[0]}/works"
+        params = {"role": "client", "sort": "date"}
+        return self._pagination(url, params)
+
+
+class SkebUserExtractor(Dispatch, SkebExtractor):
+    """Extractor for a skeb user profile"""
+    pattern = USER_PATTERN + r"/?$"
     example = "https://skeb.jp/@USER"
 
-    def posts(self):
-        url = "{}/api/users/{}/works".format(self.root, self.user_name)
-
-        params = {"role": "creator", "sort": "date"}
-        posts = self._pagination(url, params)
-
+    def items(self):
         if self.config("sent-requests", False):
-            params = {"role": "client", "sort": "date"}
-            posts = itertools.chain(posts, self._pagination(url, params))
+            default = ("works", "sentrequests")
+        else:
+            default = ("works",)
 
-        return posts
+        base = f"{self.root}/@{self.groups[0]}/"
+        return self._dispatch_extractors((
+            (SkebWorksExtractor       , base + "works"),
+            (SkebSentrequestsExtractor, base + "sentrequests"),
+        ), default)
 
 
 class SkebSearchExtractor(SkebExtractor):
     """Extractor for skeb search results"""
     subcategory = "search"
-    pattern = r"(?:https?://)?skeb\.jp/search\?q=([^&#]+)"
+    pattern = BASE_PATTERN + r"/search\?q=([^&#]+)"
     example = "https://skeb.jp/search?q=QUERY"
 
     def metadata(self):
-        return {"search_tags": text.unquote(self.user_name)}
+        return {"search_tags": text.unquote(self.groups[0])}
 
     def posts(self):
         url = "https://hb1jt3kre9-2.algolianet.com/1/indexes/*/queries"
@@ -255,15 +275,15 @@ class SkebSearchExtractor(SkebExtractor):
 
         request = {
             "indexName": "Request",
-            "query": text.unquote(self.user_name),
+            "query": text.unquote(self.groups[0]),
             "params": pams + str(page),
         }
         data = {"requests": (request,)}
 
         while True:
-            result = self.request(
+            result = self.request_json(
                 url, method="POST", params=params, headers=headers, json=data,
-            ).json()["results"][0]
+            )["results"][0]
 
             for post in result["hits"]:
                 parts = post["path"].split("/")
@@ -278,13 +298,13 @@ class SkebSearchExtractor(SkebExtractor):
 class SkebFollowingExtractor(SkebExtractor):
     """Extractor for all creators followed by a skeb user"""
     subcategory = "following"
-    pattern = r"(?:https?://)?skeb\.jp/@([^/?#]+)/following_creators"
+    pattern = USER_PATTERN + r"/following_creators"
     example = "https://skeb.jp/@USER/following_creators"
 
-    items = SkebExtractor._items_users
+    items = SkebExtractor.items_users
 
     def users(self):
-        endpoint = "/users/{}/following_creators".format(self.user_name)
+        endpoint = f"/users/{self.groups[0]}/following_creators"
         params = {"sort": "date"}
         return self._pagination_users(endpoint, params)
 
@@ -292,12 +312,11 @@ class SkebFollowingExtractor(SkebExtractor):
 class SkebFollowingUsersExtractor(SkebExtractor):
     """Extractor for your followed users"""
     subcategory = "following-users"
-    pattern = r"(?:https?://)?skeb\.jp/following_users()"
+    pattern = BASE_PATTERN + r"/following_users"
     example = "https://skeb.jp/following_users"
 
-    items = SkebExtractor._items_users
+    items = SkebExtractor.items_users
 
     def users(self):
         endpoint = "/following_users"
-        params = {}
-        return self._pagination_users(endpoint, params)
+        return self._pagination_users(endpoint, {})

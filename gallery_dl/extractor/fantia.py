@@ -48,7 +48,7 @@ class FantiaExtractor(Extractor):
 
             for content in contents:
                 files = self._process_content(post, content)
-                yield Message.Directory, post
+                yield Message.Directory, "", post
 
                 if content["visible_status"] != "visible":
                     self.log.warning(
@@ -93,7 +93,7 @@ class FantiaExtractor(Extractor):
     def _get_post_data(self, post_id):
         """Fetch and process post data"""
         url = self.root+"/api/v1/posts/"+post_id
-        resp = self.request(url, headers=self.headers).json()["post"]
+        resp = self.request_json(url, headers=self.headers)["post"]
         return {
             "post_id": resp["id"],
             "post_url": self.root + "/posts/" + str(resp["id"]),
@@ -101,7 +101,7 @@ class FantiaExtractor(Extractor):
             "comment": resp["comment"],
             "rating": resp["rating"],
             "posted_at": resp["posted_at"],
-            "date": text.parse_datetime(
+            "date": self.parse_datetime(
                 resp["posted_at"], "%a, %d %b %Y %H:%M:%S %z"),
             "fanclub_id": resp["fanclub"]["id"],
             "fanclub_user_id": resp["fanclub"]["user"]["id"],
@@ -181,10 +181,10 @@ class FantiaCreatorExtractor(FantiaExtractor):
 
     def __init__(self, match):
         FantiaExtractor.__init__(self, match)
-        self.creator_id = match.group(1)
+        self.creator_id = match[1]
 
     def posts(self):
-        url = "{}/fanclubs/{}/posts".format(self.root, self.creator_id)
+        url = f"{self.root}/fanclubs/{self.creator_id}/posts"
         return self._pagination(url)
 
 
@@ -196,7 +196,7 @@ class FantiaPostExtractor(FantiaExtractor):
 
     def __init__(self, match):
         FantiaExtractor.__init__(self, match)
-        self.post_id = match.group(1)
+        self.post_id = match[1]
 
     def posts(self):
         self._csrf_token()

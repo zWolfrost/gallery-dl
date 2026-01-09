@@ -23,7 +23,7 @@ class GofileFolderExtractor(Extractor):
 
     def __init__(self, match):
         Extractor.__init__(self, match)
-        self.content_id = match.group(1)
+        self.content_id = match[1]
 
     def items(self):
         recursive = self.config("recursive")
@@ -39,7 +39,7 @@ class GofileFolderExtractor(Extractor):
                               self._get_website_token())
 
         folder = self._get_content(self.content_id, password)
-        yield Message.Directory, folder
+        yield Message.Directory, "", folder
 
         try:
             contents = folder.pop("children")
@@ -75,28 +75,29 @@ class GofileFolderExtractor(Extractor):
     @cache(maxage=86400)
     def _get_website_token(self):
         self.log.debug("Fetching website token")
-        page = self.request(self.root + "/dist/js/global.js").text
+        page = self.request(self.root + "/dist/js/config.js").text
         return text.extr(page, '.wt = "', '"')
 
     def _get_content(self, content_id, password=None):
-        headers = {"Authorization": "Bearer " + self.api_token}
-        params = {"wt": self.website_token}
-        if password is not None:
-            params["password"] = hashlib.sha256(password.encode()).hexdigest()
+        headers = {
+            "Authorization"  : "Bearer " + self.api_token,
+            "X-Website-Token": self.website_token,
+        }
+        params = None if password is None else {"password": hashlib.sha256(
+            password.encode()).hexdigest()}
         return self._api_request("contents/" + content_id, params, headers)
 
     def _api_request(self, endpoint, params=None, headers=None, method="GET"):
-        response = self.request(
+        response = self.request_json(
             "https://api.gofile.io/" + endpoint,
-            method=method, params=params, headers=headers,
-        ).json()
+            method=method, params=params, headers=headers)
 
         if response["status"] != "ok":
             if response["status"] == "error-notFound":
                 raise exception.NotFoundError("content")
             if response["status"] == "error-passwordRequired":
                 raise exception.AuthorizationError("Password required")
-            raise exception.StopExtraction(
-                "%s failed (Status: %s)", endpoint, response["status"])
+            raise exception.AbortExtraction(
+                f"{endpoint} failed (Status: {response['status']})")
 
         return response["data"]

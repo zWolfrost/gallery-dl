@@ -41,6 +41,7 @@ __tests__ = (
         "catalog"  : "N/A",
         "count"    : 18,
         "date"     : "Dec 23rd, 2024",
+        "description": r"re:<p>Composer:.+",
         "developer": "",
         "name"     : "Last Kingdom (Goddess of Victory: NIKKE Original Soundtrack)",
         "platform" : ["Android", "iOS", "Windows"],
@@ -62,7 +63,7 @@ __tests__ = (
     "#class": khinsider.KhinsiderSoundtrackExtractor,
     "#options": {"covers": True},
     "#range"  : "1-10",
-    "#urls"   : (
+    "#results": (
         "https://vgmsite.com/soundtracks/super-mario-64-soundtrack/00%20Front.jpg",
         "https://vgmsite.com/soundtracks/super-mario-64-soundtrack/01%20Back.jpg",
         "https://vgmsite.com/soundtracks/super-mario-64-soundtrack/02%20Booklet%20Front%20and%20Back.jpg",
@@ -81,6 +82,7 @@ __tests__ = (
         "catalog"  : "PCCG-00357",
         "count"    : 36,
         "date"     : "Jul 1st, 2024",
+        "description": r"re:<p>Composer: Koji Kondo",
         "developer": "",
         "name"     : "Super Mario 64 Original Soundtrack",
         "platform" : ["N64"],

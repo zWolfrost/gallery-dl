@@ -5,6 +5,7 @@
 # published by the Free Software Foundation.
 
 from gallery_dl.extractor import imagehosts
+from gallery_dl import exception
 
 
 __tests__ = (
@@ -42,10 +43,18 @@ __tests__ = (
 },
 
 {
+    "#url"     : "https://imagetwist.com/tynhxt4ay9rl/9g09tq0e2i1b.jpg",
+    "#comment" : "'Image not found' (#8415)",
+    "#category": ("imagehost", "imagetwist", "image"),
+    "#class"   : imagehosts.ImagetwistImageExtractor,
+    "#exception": exception.NotFoundError,
+},
+
+{
     "#url"     : "https://imagetwist.com/p/gdldev/747223/digits",
     "#category": ("imagehost", "imagetwist", "gallery"),
     "#class"   : imagehosts.ImagetwistGalleryExtractor,
-    "#urls"    : (
+    "#results" : (
         "https://imagetwist.com/j6eu91sbl9bs",
         "https://imagetwist.com/vx4oh119izyr",
         "https://imagetwist.com/n3td3a6vzzed",

@@ -37,9 +37,9 @@ class LensdumpAlbumExtractor(LensdumpBase, GalleryExtractor):
     def __init__(self, match):
         self.gallery_id, query = match.groups()
         if query:
-            url = "{}/a/{}/?{}".format(self.root, self.gallery_id, query)
+            url = f"{self.root}/a/{self.gallery_id}/?{query}"
         else:
-            url = "{}/a/{}".format(self.root, self.gallery_id)
+            url = f"{self.root}/a/{self.gallery_id}"
         GalleryExtractor.__init__(self, match, url)
 
     def metadata(self, page):
@@ -81,7 +81,7 @@ class LensdumpAlbumsExtractor(LensdumpBase, Extractor):
 
     def items(self):
         user, query = self.groups
-        url = "{}/{}/".format(self.root, user)
+        url = f"{self.root}/{user}/"
         if query:
             params = text.parse_query(query)
         else:
@@ -100,12 +100,13 @@ class LensdumpImageExtractor(LensdumpBase, Extractor):
     filename_fmt = "{category}_{id}{title:?_//}.{extension}"
     directory_fmt = ("{category}",)
     archive_fmt = "{id}"
-    pattern = r"(?:https?://)?(?:(?:i\d?\.)?lensdump\.com|\w\.l3n\.co)/i/(\w+)"
+    pattern = (r"(?:https?://)?(?:(?:i\d?\.)?lensdump\.com|\w\.l3n\.co)"
+               r"/(?:i/)?(\w+)")
     example = "https://lensdump.com/i/ID"
 
     def items(self):
         key = self.groups[0]
-        url = "{}/i/{}".format(self.root, key)
+        url = f"{self.root}/i/{key}"
         extr = text.extract_from(self.request(url).text)
 
         data = {
@@ -118,10 +119,9 @@ class LensdumpImageExtractor(LensdumpBase, Extractor):
                 'property="image:width" content="', '"')),
             "height": text.parse_int(extr(
                 'property="image:height" content="', '"')),
-            "date"  : text.parse_datetime(extr(
-                '<span title="', '"'), "%Y-%m-%d %H:%M:%S"),
+            "date"  : self.parse_datetime_iso(extr('<span title="', '"')),
         }
 
         text.nameext_from_url(data["url"], data)
-        yield Message.Directory, data
+        yield Message.Directory, "", data
         yield Message.Url, data["url"], data

@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-# Copyright 2022-2023 Mike Fährmann
+# Copyright 2022-2025 Mike Fährmann
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License version 2 as
@@ -23,7 +23,7 @@ class ToyhouseExtractor(Extractor):
 
     def __init__(self, match):
         Extractor.__init__(self, match)
-        self.user = match.group(1)
+        self.user = match[1]
         self.offset = 0
 
     def items(self):
@@ -34,7 +34,7 @@ class ToyhouseExtractor(Extractor):
                 post.update(metadata)
             text.nameext_from_url(post["url"], post)
             post["id"], _, post["hash"] = post["filename"].partition("_")
-            yield Message.Directory, post
+            yield Message.Directory, "", post
             yield Message.Url, post["url"], post
 
     def posts(self):
@@ -51,7 +51,7 @@ class ToyhouseExtractor(Extractor):
         extr = text.extract_from(post)
         return {
             "url": extr(needle, '"'),
-            "date": text.parse_datetime(extr(
+            "date": self.parse_datetime(extr(
                 '</h2>\n            <div class="mb-1">', '<'),
                 "%d %b %Y, %I:%M:%S %p"),
             "artists": [
@@ -108,7 +108,7 @@ class ToyhouseArtExtractor(ToyhouseExtractor):
     example = "https://www.toyhou.se/USER/art"
 
     def posts(self):
-        return self._pagination("/{}/art".format(self.user))
+        return self._pagination(f"/{self.user}/art")
 
     def metadata(self):
         return {"user": self.user}
@@ -124,6 +124,6 @@ class ToyhouseImageExtractor(ToyhouseExtractor):
     example = "https://toyhou.se/~images/12345"
 
     def posts(self):
-        url = "{}/~images/{}".format(self.root, self.user)
+        url = f"{self.root}/~images/{self.user}"
         return (self._parse_post(
             self.request(url).text, '<img class="mw-100" src="'),)

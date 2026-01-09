@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-# Copyright 2019-2023 Mike Fährmann
+# Copyright 2019-2025 Mike Fährmann
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License version 2 as
@@ -26,8 +26,8 @@ class _8musesAlbumExtractor(Extractor):
 
     def __init__(self, match):
         Extractor.__init__(self, match)
-        self.path = match.group(1)
-        self.params = match.group(2) or ""
+        self.path = match[1]
+        self.params = match[2] or ""
 
     def items(self):
         url = self.root + self.path + self.params
@@ -37,11 +37,10 @@ class _8musesAlbumExtractor(Extractor):
                 self.request(url).text,
                 'id="ractive-public" type="text/plain">', '</script>'))
 
-            images = data.get("pictures")
-            if images:
+            if images := data.get("pictures"):
                 count = len(images)
                 album = self._make_album(data["album"])
-                yield Message.Directory, {"album": album, "count": count}
+                yield Message.Directory, "", {"album": album, "count": count}
                 for num, image in enumerate(images, 1):
                     url = self.root + "/image/fl/" + image["publicUri"]
                     img = {
@@ -54,8 +53,7 @@ class _8musesAlbumExtractor(Extractor):
                     }
                     yield Message.Url, url, img
 
-            albums = data.get("albums")
-            if albums:
+            if albums := data.get("albums"):
                 for album in albums:
                     permalink = album.get("permalink")
                     if not permalink:
@@ -74,8 +72,7 @@ class _8musesAlbumExtractor(Extractor):
                 return
             path, _, num = self.path.rstrip("/").rpartition("/")
             path = path if num.isdecimal() else self.path
-            url = "{}{}/{}{}".format(
-                self.root, path, data["page"] + 1, self.params)
+            url = f"{self.root}{path}/{data['page'] + 1}{self.params}"
 
     def _make_album(self, album):
         return {
@@ -88,12 +85,10 @@ class _8musesAlbumExtractor(Extractor):
             "parent" : text.parse_int(album["parentId"]),
             "views"  : text.parse_int(album["numberViews"]),
             "likes"  : text.parse_int(album["numberLikes"]),
-            "date"   : text.parse_datetime(
-                album["updatedAt"], "%Y-%m-%dT%H:%M:%S.%fZ"),
+            "date"   : self.parse_datetime_iso(album["updatedAt"]),
         }
 
-    @staticmethod
-    def _unobfuscate(data):
+    def _unobfuscate(self, data):
         return util.json_loads("".join([
             chr(33 + (ord(c) + 14) % 94) if "!" <= c <= "~" else c
             for c in text.unescape(data.strip("\t\n\r !"))

@@ -11,7 +11,7 @@ with many `configuration options <https://gdl-org.github.io/docs/configuration.h
 and powerful `filenaming capabilities <https://gdl-org.github.io/docs/formatting.html>`__.
 
 
-|pypi| |build|
+|pypi| |build| |discord|
 
 .. contents::
 
@@ -19,7 +19,7 @@ and powerful `filenaming capabilities <https://gdl-org.github.io/docs/formatting
 Dependencies
 ============
 
-- Python_ 3.4+
+- Python_ 3.8+
 - Requests_
 
 Optional
@@ -34,6 +34,9 @@ Optional
 - PyYAML_: YAML configuration file support
 - toml_: TOML configuration file support for Python<3.11
 - SecretStorage_: GNOME keyring passwords for ``--cookies-from-browser``
+- Psycopg_: PostgreSQL archive support
+- truststore_: Native system certificate support
+- Jinja_: Jinja template support
 
 
 Installation
@@ -76,9 +79,9 @@ Standalone Executable
 Prebuilt executable files with a Python interpreter and
 required Python packages included are available for
 
-- `Windows <https://github.com/mikf/gallery-dl/releases/download/v1.28.5/gallery-dl.exe>`__
+- `Windows <https://github.com/mikf/gallery-dl/releases/download/v1.31.2/gallery-dl.exe>`__
   (Requires `Microsoft Visual C++ Redistributable Package (x86) <https://aka.ms/vs/17/release/vc_redist.x86.exe>`__)
-- `Linux   <https://github.com/mikf/gallery-dl/releases/download/v1.28.5/gallery-dl.bin>`__
+- `Linux   <https://github.com/mikf/gallery-dl/releases/download/v1.31.2/gallery-dl.bin>`__
 
 
 Nightly Builds
@@ -158,6 +161,13 @@ Pulling image from `GitHub Container Registry <https://github.com/mikf/gallery-d
 
     docker pull ghcr.io/mikf/gallery-dl
     docker tag ghcr.io/mikf/gallery-dl gallery-dl
+
+Pulling *Nightly Build* images built from the latest commit by using the ``dev`` tag:
+
+.. code:: bash
+
+    docker pull mikf123/gallery-dl:dev
+    docker pull ghcr.io/mikf/gallery-dl:dev
 
 To run the container you will probably want to attach some directories on the host so that the config file and downloads can persist across runs.
 
@@ -460,7 +470,7 @@ To authenticate with a ``mastodon`` instance, run *gallery-dl* with
 .. _Python:     https://www.python.org/downloads/
 .. _PyPI:       https://pypi.org/
 .. _pip:        https://pip.pypa.io/en/stable/
-.. _Requests:   https://requests.readthedocs.io/en/master/
+.. _Requests:   https://requests.readthedocs.io/en/latest/
 .. _FFmpeg:     https://www.ffmpeg.org/
 .. _mkvmerge:   https://www.matroska.org/downloads/mkvtoolnix.html
 .. _yt-dlp:     https://github.com/yt-dlp/yt-dlp
@@ -472,12 +482,15 @@ To authenticate with a ``mastodon`` instance, run *gallery-dl* with
 .. _PyYAML:     https://pyyaml.org/
 .. _toml:       https://pypi.org/project/toml/
 .. _SecretStorage: https://pypi.org/project/SecretStorage/
+.. _Psycopg:    https://www.psycopg.org/
+.. _truststore: https://truststore.readthedocs.io/en/latest/
+.. _Jinja:      https://jinja.palletsprojects.com/
 .. _Snapd:      https://docs.snapcraft.io/installing-snapd
 .. _OAuth:      https://en.wikipedia.org/wiki/OAuth
 .. _Chocolatey: https://chocolatey.org/install
-.. _Scoop:      https://scoop.sh
+.. _Scoop:      https://scoop.sh/
 
-.. |pypi| image:: https://img.shields.io/pypi/v/gallery-dl.svg
+.. |pypi| image:: https://img.shields.io/pypi/v/gallery-dl?logo=pypi&label=PyPI
     :target: https://pypi.org/project/gallery-dl/
 
 .. |build| image:: https://github.com/mikf/gallery-dl/workflows/tests/badge.svg
@@ -485,3 +498,6 @@ To authenticate with a ``mastodon`` instance, run *gallery-dl* with
 
 .. |gitter| image:: https://badges.gitter.im/gallery-dl/main.svg
     :target: https://gitter.im/gallery-dl/main
+
+.. |discord| image:: https://img.shields.io/discord/1067148002722062416?logo=discord&label=Discord&color=blue
+    :target: https://discord.gg/euZgE6Xp

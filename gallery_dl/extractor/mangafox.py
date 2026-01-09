@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-# Copyright 2017-2023 Mike Fährmann
+# Copyright 2017-2025 Mike Fährmann
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License version 2 as
@@ -54,7 +54,7 @@ class MangafoxChapterExtractor(ChapterExtractor):
             yield text.ensure_http_scheme(text.unescape(url)), None
 
             pnum += 2
-            page = self.request("{}/{}.html".format(self.urlbase, pnum)).text
+            page = self.request(f"{self.urlbase}/{pnum}.html").text
 
 
 class MangafoxMangaExtractor(MangaExtractor):
@@ -99,7 +99,7 @@ class MangafoxMangaExtractor(MangaExtractor):
                 "chapter"       : text.parse_int(chapter),
                 "chapter_minor" : minor or "",
                 "chapter_string": cstr,
-                "date"          : text.parse_datetime(
+                "date"          : self.parse_datetime(
                     extr('right">', '</span>'), "%b %d, %Y"),
             }
             chapter.update(data)

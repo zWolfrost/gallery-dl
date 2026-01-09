@@ -26,14 +26,13 @@ class PiczelExtractor(Extractor):
     def items(self):
         for post in self.posts():
             post["tags"] = [t["title"] for t in post["tags"] if t["title"]]
-            post["date"] = text.parse_datetime(
-                post["created_at"], "%Y-%m-%dT%H:%M:%S.%f%z")
+            post["date"] = self.parse_datetime_iso(post["created_at"])
 
             if post["multi"]:
                 images = post["images"]
                 del post["images"]
                 post["count"] = len(images)
-                yield Message.Directory, post
+                yield Message.Directory, "", post
                 for post["num"], image in enumerate(images):
                     if "id" in image:
                         del image["id"]
@@ -43,7 +42,7 @@ class PiczelExtractor(Extractor):
 
             else:
                 post["count"] = 1
-                yield Message.Directory, post
+                yield Message.Directory, "", post
                 post["num"] = 0
                 url = post["image"]["url"]
                 yield Message.Url, url, text.nameext_from_url(url, post)
@@ -55,7 +54,7 @@ class PiczelExtractor(Extractor):
         params = {"page": pnum}
 
         while True:
-            data = self.request(url, params=params).json()
+            data = self.request_json(url, params=params)
 
             yield from data["data"]
 
@@ -71,7 +70,7 @@ class PiczelUserExtractor(PiczelExtractor):
     example = "https://piczel.tv/gallery/USER"
 
     def posts(self):
-        url = "{}/api/users/{}/gallery".format(self.root_api, self.groups[0])
+        url = f"{self.root_api}/api/users/{self.groups[0]}/gallery"
         return self._pagination(url)
 
 
@@ -84,7 +83,7 @@ class PiczelFolderExtractor(PiczelExtractor):
     example = "https://piczel.tv/gallery/USER/12345"
 
     def posts(self):
-        url = "{}/api/gallery/folder/{}".format(self.root_api, self.groups[0])
+        url = f"{self.root_api}/api/gallery/folder/{self.groups[0]}"
         return self._pagination(url)
 
 
@@ -95,5 +94,5 @@ class PiczelImageExtractor(PiczelExtractor):
     example = "https://piczel.tv/gallery/image/12345"
 
     def posts(self):
-        url = "{}/api/gallery/{}".format(self.root_api, self.groups[0])
-        return (self.request(url).json(),)
+        url = f"{self.root_api}/api/gallery/{self.groups[0]}"
+        return (self.request_json(url),)

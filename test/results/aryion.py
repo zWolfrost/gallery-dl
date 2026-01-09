@@ -42,6 +42,39 @@ __tests__ = (
 },
 
 {
+    "#url"     : "https://aryion.com/g4/favorites/CultOfTheShyCorpus",
+    "#class"   : aryion.AryionFavoriteExtractor,
+    "#range"   : "1-3",
+    "#results" : (
+        "https://aryion.com/g4/data.php?id=373076",
+        "https://aryion.com/g4/data.php?id=373075",
+        "https://aryion.com/g4/data.php?id=373074",
+    ),
+
+    "user"  : "CultOfTheShyCorpus",
+    "folder": "Camilla Swallows Corrin",
+    "path"  : [
+        "Older Art!",
+        "Older Fanart!",
+    ],
+},
+
+{
+    "#url"     : "https://aryion.com/g4/favorites/CultOfTheShyCorpus/Elf%27s%20Revenge",
+    "#comment" : "'category' URL (#8705)",
+    "#class"   : aryion.AryionFavoriteExtractor,
+    "#range"   : "1-3",
+    "#results" : (
+        "https://aryion.com/g4/data.php?id=531328",
+        "https://aryion.com/g4/data.php?id=403354",
+        "https://aryion.com/g4/data.php?id=361515",
+    ),
+
+    "folder"     : "Elf's Revenge",
+    "path"       : [],
+},
+
+{
     "#url"     : "https://aryion.com/g4/tags.php?tag=star+wars&p=28",
     "#category": ("", "aryion", "tag"),
     "#class"   : aryion.AryionTagExtractor,
@@ -73,7 +106,7 @@ __tests__ = (
     "views"      : int,
     "favorites"  : int,
     "comments"   : int,
-    "_mtime"     : "Sat, 16 Feb 2019 19:30:34 GMT",
+    "_http_lastmodified": "Sat, 16 Feb 2019 19:30:34 GMT",
 },
 
 {
@@ -92,6 +125,51 @@ __tests__ = (
     "#class"   : aryion.AryionPostExtractor,
     "#pattern" : aryion.AryionPostExtractor.pattern,
     "#count"   : 2,
+},
+
+{
+    "#url"     : "https://aryion.com/g4/search.php?q=forest1",
+    "#class"   : aryion.AryionSearchExtractor,
+    "#results" : (
+        "https://aryion.com/g4/data.php?id=165068",
+        "https://aryion.com/g4/data.php?id=165069",
+        "https://aryion.com/g4/data.php?id=165070",
+        "https://aryion.com/g4/data.php?id=165071",
+        "https://aryion.com/g4/data.php?id=165064",
+    ),
+
+    "search"     : {
+        "prefix": "",
+        "q"     : "forest1",
+    },
+},
+
+{
+    "#url"     : "https://aryion.com/g4/search.php?q=&tags=water%2C+&type_search=&user=&from_date=04%2F01%2F2025&to_date=07%2F01%2F2025&sort=view_count&p=2",
+    "#class"   : aryion.AryionSearchExtractor,
+    "#range"   : "1-3",
+    "#results" : (
+        "https://aryion.com/g4/data.php?id=1134439",
+        "https://aryion.com/g4/data.php?id=1124899",
+        "https://aryion.com/g4/data.php?id=1133691",
+    ),
+
+    "search"     : {
+        "from_date"  : "04/01/2025",
+        "p"          : "2",
+        "prefix"     : "t_",
+        "q"          : "",
+        "sort"       : "view_count",
+        "tags"       : "water, ",
+        "to_date"    : "07/01/2025",
+        "type_search": "",
+        "user"       : "",
+    },
+},
+
+{
+    "#url"     : "https://aryion.com/g4/messagepage.php",
+    "#class"   : aryion.AryionWatchExtractor,
 },
 
 )

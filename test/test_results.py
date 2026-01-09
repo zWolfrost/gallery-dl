@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-# Copyright 2015-2023 Mike Fährmann
+# Copyright 2015-2025 Mike Fährmann
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License version 2 as
@@ -53,16 +53,17 @@ AUTH_REQUIRED = {
     "fantia",
     "instagram",
     "twitter",
+    "poipiku",
 }
 
-AUTH_KEYS = (
+AUTH_KEYS = {
     "username",
     "cookies",
     "api-key",
     "client-id",
     "access-token",
     "refresh-token",
-)
+}
 
 
 class TestExtractorResults(unittest.TestCase):
@@ -80,9 +81,9 @@ class TestExtractorResults(unittest.TestCase):
     @classmethod
     def tearDownClass(cls):
         if cls._skipped:
-            print("\n\nSkipped tests:")
-            for url, exc in cls._skipped:
-                print('- {} ("{}")'.format(url, exc))
+            sys.stdout.write("\n\nSkipped tests:\n")
+            for url, reason in cls._skipped:
+                sys.stdout.write(f'- {url} ("{reason}")\n')
 
     def assertRange(self, value, range, msg=None):
         if range.step > 1:
@@ -91,7 +92,34 @@ class TestExtractorResults(unittest.TestCase):
             self.assertLessEqual(value, range.stop, msg=msg)
             self.assertGreaterEqual(value, range.start, msg=msg)
 
+    def assertLogEqual(self, expected, output):
+        if isinstance(expected, str):
+            expected = (expected,)
+        self.assertEqual(len(expected), len(output), "#log/count")
+
+        for exp, out in zip(expected, output):
+            level, name, message = out.split(":", 2)
+
+            if isinstance(exp, str):
+                return self.assertEqual(exp, message, "#log")
+
+            self.assertEqual(exp[0].lower(), level.lower(), "#log/level")
+            if len(exp) < 3:
+                self.assertEqual(exp[1], message, "#log/message")
+            else:
+                self.assertEqual(exp[1], name   , "#log/name")
+                self.assertEqual(exp[2], message, "#log/message")
+
     def _run_test(self, result):
+        if result.get("#fail"):
+            del result["#fail"]
+            try:
+                self._run_test(result)
+            except AssertionError:
+                return
+            else:
+                self.fail("Test did not fail")
+
         base, cat, sub = result_categories(result)
         result.pop("#comment", None)
         result.pop("#category", None)
@@ -106,6 +134,10 @@ class TestExtractorResults(unittest.TestCase):
         if len(result) <= 2:
             return  # only matching
 
+        skip = result.pop("#skip", False)
+        if skip:
+            return self._skipped.append((result["#url"], skip))
+
         if auth is None:
             auth = (cat in AUTH_REQUIRED)
         elif not auth:
@@ -113,8 +145,9 @@ class TestExtractorResults(unittest.TestCase):
             for key in AUTH_KEYS:
                 config.set((), key, None)
 
-        if auth and not any(extr.config(key) for key in AUTH_KEYS):
-            return self._skipped.append((result["#url"], "no auth"))
+        if auth and not self._has_auth(extr, auth):
+            self._skipped.append((result["#url"], "no auth"))
+            self.skipTest("no auth")
 
         if "#options" in result:
             for key, value in result["#options"].items():
@@ -124,15 +157,24 @@ class TestExtractorResults(unittest.TestCase):
             config.set((), "image-range"  , result["#range"])
             config.set((), "chapter-range", result["#range"])
 
-        tjob = ResultJob(extr, content=("#sha1_content" in result))
+        tjob = ResultJob(extr,
+                         content=("#sha1_content" in result),
+                         format=(result.get("#metadata") != "post"))
 
         if "#exception" in result:
-            with self.assertRaises(result["#exception"], msg="#exception"):
+            with self.assertRaises(result["#exception"], msg="#exception"), \
+                    self.assertLogs() as log_info:
                 tjob.run()
+            if "#log" in result:
+                self.assertLogEqual(result["#log"], log_info.output)
             return
 
         try:
-            tjob.run()
+            if "#log" in result:
+                with self.assertLogs() as log_info:
+                    tjob.run()
+            else:
+                tjob.run()
         except exception.StopExtraction:
             pass
         except exception.HttpError as exc:
@@ -142,6 +184,9 @@ class TestExtractorResults(unittest.TestCase):
                 self._skipped.append((result["#url"], exc))
                 self.skipTest(exc)
             raise
+
+        if "#log" in result:
+            self.assertLogEqual(result["#log"], log_info.output)
 
         if result.get("#archive", True):
             self.assertEqual(
@@ -156,7 +201,7 @@ class TestExtractorResults(unittest.TestCase):
                     extr = kwdict["_extractor"].from_url(url)
                     if extr is None and not result.get("#extractor", True):
                         continue
-                    self.assertIsInstance(extr, kwdict["_extractor"])
+                    self.assertIsInstance(extr, kwdict["_extractor"], msg=url)
                     self.assertEqual(extr.url, url)
         else:
             # test 'extension' entries
@@ -190,7 +235,7 @@ class TestExtractorResults(unittest.TestCase):
             if isinstance(count, str):
                 self.assertRegex(
                     count, r"^ *(==|!=|<|<=|>|>=) *\d+ *$", msg="#count")
-                expr = "{} {}".format(len_urls, count)
+                expr = f"{len_urls} {count}"
                 self.assertTrue(eval(expr), msg=expr)
             elif isinstance(count, range):
                 self.assertRange(len_urls, count, msg="#count")
@@ -207,74 +252,172 @@ class TestExtractorResults(unittest.TestCase):
                 for url, pat in zip(tjob.url_list, pattern):
                     self.assertRegex(url, pat, msg="#pattern")
 
-        if "#urls" in result:
-            expected = result["#urls"]
+        if "#results" in result:
+            expected = result["#results"]
             if isinstance(expected, str):
-                self.assertTrue(tjob.url_list, msg="#urls")
-                self.assertEqual(tjob.url_list[0], expected, msg="#urls")
+                self.assertTrue(tjob.url_list, msg="#results")
+                self.assertEqual(
+                    tjob.url_list[0], expected, msg="#results")
             else:
-                self.assertSequenceEqual(tjob.url_list, expected, msg="#urls")
+                self.assertSequenceEqual(
+                    tjob.url_list, expected, msg="#results")
 
         metadata = {k: v for k, v in result.items() if k[0] != "#"}
         if metadata:
-            for kwdict in tjob.kwdict_list:
+            if result.get("#metadata") == "post":
+                kwdicts = tjob.kwdict_post
+            else:
+                kwdicts = tjob.kwdict_list
+            for kwdict in kwdicts:
                 self._test_kwdict(kwdict, metadata)
+
+    def _has_auth(self, extr, auth):
+        if auth is True:
+            auth = AUTH_KEYS
+
+        if isinstance(auth, str):
+            return extr.config(auth)
+        if isinstance(auth, set):
+            return any(self._has_auth(extr, a) for a in auth)
+        if isinstance(auth, (tuple, list)):
+            return all(self._has_auth(extr, k) for k in auth)
+
+        self.fail(f"Invalid '#auth' value: {auth!r}")
 
     def _test_kwdict(self, kwdict, tests, parent=None):
         for key, test in tests.items():
+
             if key.startswith("?"):
                 key = key[1:]
                 if key not in kwdict:
                     continue
-            path = "{}.{}".format(parent, key) if parent else key
+
+            if key.endswith("[*]"):
+                key = key[:-3]
+                subtest = True
+            else:
+                subtest = False
+
+            path = f"{parent}.{key}" if parent else key
+
+            if key.startswith("!"):
+                self.assertNotIn(key[1:], kwdict, msg=path)
+                continue
+
             self.assertIn(key, kwdict, msg=path)
             value = kwdict[key]
 
-            if isinstance(test, dict):
-                self._test_kwdict(value, test, path)
-            elif isinstance(test, type):
-                self.assertIsInstance(value, test, msg=path)
-            elif isinstance(test, range):
-                self.assertRange(value, test, msg=path)
-            elif isinstance(test, set):
-                self.assertTrue(value in test or type(value) in test, msg=path)
-            elif isinstance(test, list):
-                subtest = False
-                for idx, item in enumerate(test):
-                    if isinstance(item, dict):
-                        subtest = True
-                        subpath = "{}[{}]".format(path, idx)
-                        self._test_kwdict(value[idx], item, subpath)
-                if not subtest:
-                    self.assertEqual(test, value, msg=path)
-            elif isinstance(test, str):
-                if test.startswith("re:"):
-                    self.assertRegex(value, test[3:], msg=path)
-                elif test.startswith("dt:"):
-                    self.assertIsInstance(value, datetime.datetime, msg=path)
-                    self.assertEqual(test[3:], str(value), msg=path)
-                elif test.startswith("type:"):
-                    self.assertEqual(test[5:], type(value).__name__, msg=path)
-                elif test.startswith("len:"):
-                    self.assertIsInstance(value, (list, tuple), msg=path)
-                    self.assertEqual(int(test[4:]), len(value), msg=path)
+            if subtest:
+                self.assertNotIsInstance(value, str, msg=path)
+                for idx, item in enumerate(value):
+                    subpath = f"{path}[{idx}]"
+                    self._test_kwdict_value(item, test, subpath)
+            else:
+                self._test_kwdict_value(value, test, path)
+
+    def _test_kwdict_value(self, value, test, path):
+        if isinstance(test, dict):
+            self._test_kwdict(value, test, path)
+        elif isinstance(test, type):
+            self.assertIsInstance(value, test, msg=path)
+        elif isinstance(test, range):
+            self.assertRange(value, test, msg=path)
+        elif isinstance(test, set):
+            if isinstance(value, list):
+                value = tuple(value)
+            for item in test:
+                if isinstance(item, type) and isinstance(value, item) or \
+                        value == item:
+                    break
+            else:
+                v = type(value) if len(str(value)) > 64 else value
+                self.fail(f"{v!r} not in {test}: {path}")
+        elif isinstance(test, list):
+            subtest = False
+            for idx, item in enumerate(test):
+                if isinstance(item, dict):
+                    subtest = True
+                    subpath = f"{path}[{idx}]"
+                    try:
+                        obj = value[idx]
+                    except Exception as exc:
+                        self.fail(f"'{exc.__class__.__name__}: {exc}' "
+                                  f"when accessing {subpath}")
+                    self._test_kwdict(obj, item, subpath)
+            if not subtest:
+                self.assertEqual(test, value, msg=path)
+        elif isinstance(test, str):
+            if test.startswith("re:"):
+                self.assertIsInstance(value, str, msg=path)
+                self.assertRegex(value, test[3:], msg=path)
+            elif test.startswith("dt:"):
+                self.assertIsInstance(value, datetime.datetime, msg=path)
+                self.assertEqual(test[3:], str(value), msg=path)
+            elif test.startswith("type:"):
+                self.assertEqual(test[5:], type(value).__name__, msg=path)
+            elif test.startswith("len:"):
+                cls, _, length = test[4:].rpartition(":")
+                if cls:
+                    self.assertEqual(
+                        cls, type(value).__name__, msg=f"{path}/type")
+                try:
+                    len_value = len(value)
+                except Exception:
+                    len_value = 0
+                    for _ in value:
+                        len_value += 1
+                self.assertEqual(int(length), len_value, msg=path)
+            elif test.startswith("hash:"):
+                digest = test[5:].lower()
+                msg = f"{path} / {digest}"
+                if digest == "md5":
+                    self.assertRegex(value, r"^[0-9a-fA-F]{32}$", msg)
+                elif digest == "sha1":
+                    self.assertRegex(value, r"^[0-9a-fA-F]{40}$", msg)
+                elif digest == "sha256":
+                    self.assertRegex(value, r"^[0-9a-fA-F]{64}$", msg)
+                elif digest == "sha512":
+                    self.assertRegex(value, r"^[0-9a-fA-F]{128}$", msg)
+            elif test.startswith("iso:"):
+                iso = test[4:]
+                if iso in ("dt", "datetime", "8601"):
+                    msg = f"{path} / ISO 8601"
+                    try:
+                        dt = datetime.datetime.fromisoformat(value)
+                    except Exception as exc:
+                        self.fail(f"Invalid datetime '{value}': {exc} {msg}")
+                    self.assertIsInstance(dt, datetime.datetime, msg=msg)
+                elif iso in ("lang", "639", "639-1"):
+                    msg = f"{path} / ISO 639-1"
+                    self.assertIsInstance(value, str, msg=msg)
+                    self.assertRegex(value, r"^[a-z]{2}(-\w+)?$", msg=msg)
+                elif iso in ("uuid", "11578", "11578:1996", "4122"):
+                    msg = f"{path} / ISO 11578:1996"
+                    pat = (r"(?i)[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-"
+                           r"[0-9a-f]{4}-[0-9a-f]{12}")
+                    self.assertIsInstance(value, str, msg=msg)
+                    self.assertRegex(value, pat, msg=msg)
                 else:
-                    self.assertEqual(test, value, msg=path)
+                    self.fail(f"Unsupported ISO test '{test}'")
             else:
                 self.assertEqual(test, value, msg=path)
+        else:
+            self.assertEqual(test, value, msg=path)
 
 
 class ResultJob(job.DownloadJob):
     """Generate test-results for extractor runs"""
 
-    def __init__(self, url, parent=None, content=False):
+    def __init__(self, url, parent=None, content=False, format=True):
         job.DownloadJob.__init__(self, url, parent)
         self.queue = False
         self.content = content
 
+        self.format = format
         self.url_list = []
         self.url_hash = hashlib.sha1()
         self.kwdict_list = []
+        self.kwdict_post = []
         self.kwdict_hash = hashlib.sha1()
         self.archive_list = []
         self.archive_hash = hashlib.sha1()
@@ -285,17 +428,9 @@ class ResultJob(job.DownloadJob):
         else:
             self._update_content = lambda url, kwdict: None
 
-        self.format_directory = TestFormatter(
-            "".join(self.extractor.directory_fmt)).format_map
-        self.format_filename = TestFormatter(
-            self.extractor.filename_fmt).format_map
-        self.format_archive = TestFormatter(
-            self.extractor.archive_fmt).format_map
-
     def run(self):
         self._init()
-        for msg in self.extractor:
-            self.dispatch(msg)
+        self.dispatch(self.extractor)
 
     def handle_url(self, url, kwdict, fallback=None):
         self._update_url(url)
@@ -305,6 +440,20 @@ class ResultJob(job.DownloadJob):
         self.format_filename(kwdict)
 
     def handle_directory(self, kwdict):
+        if self.format is not None:
+            if self.format:
+                self.format_directory = TestFormatter(
+                    "".join(self.extractor.directory_fmt)).format_map
+                self.format_filename = TestFormatter(
+                    self.extractor.filename_fmt).format_map
+                self.format_archive = TestFormatter(
+                    self.extractor.archive_fmt).format_map
+            else:
+                self.format_directory = \
+                    self.format_filename = \
+                    self.format_archive = lambda kwdict: ""
+            self.format = None
+
         self._update_kwdict(kwdict, False)
         self.format_directory(kwdict)
 
@@ -323,6 +472,8 @@ class ResultJob(job.DownloadJob):
     def _update_kwdict(self, kwdict, to_list=True):
         if to_list:
             self.kwdict_list.append(kwdict.copy())
+        else:
+            self.kwdict_post.append(kwdict.copy())
         kwdict = util.filter_dict(kwdict)
         self.kwdict_hash.update(
             json.dumps(kwdict, sort_keys=True, default=str).encode())
@@ -379,27 +530,37 @@ class TestPathfmt():
 
 class TestFormatter(formatter.StringFormatter):
 
-    @staticmethod
-    def _noop(_):
-        return ""
-
     def _apply_simple(self, key, fmt):
         if key == "extension" or "_parse_optional." in repr(fmt):
-            return self._noop
-
-        def wrap(obj):
-            return fmt(obj[key])
+            def wrap(obj):
+                try:
+                    return fmt(obj[key])
+                except KeyError:
+                    return ""
+        elif "<function identity at " in repr(fmt):
+            def wrap(obj):
+                return "".join(obj[key])
+        else:
+            def wrap(obj):
+                return fmt(obj[key])
         return wrap
 
     def _apply(self, key, funcs, fmt):
         if key == "extension" or "_parse_optional." in repr(fmt):
-            return self._noop
-
-        def wrap(obj):
-            obj = obj[key]
-            for func in funcs:
-                obj = func(obj)
-            return fmt(obj)
+            def wrap(obj):
+                obj = obj[key] if key in obj else ""
+                for func in funcs:
+                    obj = func(obj)
+                return fmt(obj)
+        elif "<function identity at " in repr(fmt):
+            def wrap(obj):
+                return "".join(obj[key])
+        else:
+            def wrap(obj):
+                obj = obj[key]
+                for func in funcs:
+                    obj = func(obj)
+                return fmt(obj)
         return wrap
 
 
@@ -417,8 +578,7 @@ def load_test_config():
     except FileNotFoundError:
         pass
     except Exception as exc:
-        sys.exit("Error when loading {}: {}: {}".format(
-            path, exc.__class__.__name__, exc))
+        sys.exit(f"Error when loading {path}: {exc.__class__.__name__}: {exc}")
 
 
 def result_categories(result):
@@ -434,7 +594,10 @@ def generate_tests():
     """Dynamically generate extractor unittests"""
     def _generate_method(result):
         def test(self):
-            print("\n" + result["#url"])
+            sys.stdout.write(f"\n{result['#url']}\n")
+            if "#comment" in result:
+                sys.stdout.write(f"# {result['#comment']}\n")
+
             try:
                 self._run_test(result)
             except KeyboardInterrupt as exc:
@@ -478,12 +641,12 @@ def generate_tests():
     enum = collections.defaultdict(int)
     for result in tests:
         base, cat, sub = result_categories(result)
-        name = "{}_{}".format(cat, sub)
+        name = f"{cat}_{sub}"
         enum[name] += 1
 
         method = _generate_method(result)
         method.__doc__ = result["#url"]
-        method.__name__ = "test_{}_{}".format(name, enum[name])
+        method.__name__ = f"test_{name}_{enum[name]}"
         setattr(TestExtractorResults, method.__name__, method)
 
 

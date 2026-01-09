@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-# Copyright 2021-2023 Mike Fährmann
+# Copyright 2021-2025 Mike Fährmann
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License version 2 as
@@ -25,14 +25,13 @@ class PicartoGalleryExtractor(Extractor):
 
     def __init__(self, match):
         Extractor.__init__(self, match)
-        self.username = match.group(1)
+        self.username = match[1]
 
     def items(self):
         for post in self.posts():
-            post["date"] = text.parse_datetime(
-                post["created_at"], "%Y-%m-%d %H:%M:%S")
+            post["date"] = self.parse_datetime_iso(post["created_at"])
             variations = post.pop("variations", ())
-            yield Message.Directory, post
+            yield Message.Directory, "", post
 
             image = post["default_image"]
             if not image:
@@ -62,7 +61,7 @@ class PicartoGalleryExtractor(Extractor):
         }
 
         while True:
-            posts = self.request(url, params=params).json()
+            posts = self.request_json(url, params=params)
             if not posts:
                 return
             yield from posts

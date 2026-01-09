@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-# Copyright 2019-2023 Mike Fährmann
+# Copyright 2019-2025 Mike Fährmann
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License version 2 as
@@ -20,7 +20,7 @@ class XhamsterExtractor(Extractor):
     category = "xhamster"
 
     def __init__(self, match):
-        self.root = "https://" + match.group(1)
+        self.root = "https://" + match[1]
         Extractor.__init__(self, match)
 
 
@@ -36,7 +36,7 @@ class XhamsterGalleryExtractor(XhamsterExtractor):
 
     def items(self):
         data = self.metadata()
-        yield Message.Directory, data
+        yield Message.Directory, "", data
         for num, image in enumerate(self.images(), 1):
             url = image["imageURL"]
             image.update(data)
@@ -67,7 +67,7 @@ class XhamsterGalleryExtractor(XhamsterExtractor):
             {
                 "id"         : text.parse_int(gallery["id"]),
                 "tags"       : [t["label"] for t in info["categoriesTags"]],
-                "date"       : text.parse_timestamp(model["created"]),
+                "date"       : self.parse_timestamp(model["created"]),
                 "views"      : text.parse_int(model["views"]),
                 "likes"      : text.parse_int(model["rating"]["likes"]),
                 "dislikes"   : text.parse_int(model["rating"]["dislikes"]),
@@ -106,7 +106,7 @@ class XhamsterUserExtractor(XhamsterExtractor):
     example = "https://xhamster.com/users/USER/photos"
 
     def items(self):
-        url = "{}/users/{}/photos".format(self.root, self.groups[1])
+        url = f"{self.root}/users/{self.groups[1]}/photos"
         data = {"_extractor": XhamsterGalleryExtractor}
 
         while url:

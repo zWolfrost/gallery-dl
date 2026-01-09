@@ -14,7 +14,7 @@ __tests__ = (
     "#class"   : instagram.InstagramUserExtractor,
     "#auth"    : False,
     "#options" : {"include": "all"},
-    "#urls": [
+    "#results" : (
         "https://www.instagram.com/instagram/info/",
         "https://www.instagram.com/instagram/avatar/",
         "https://www.instagram.com/stories/instagram/",
@@ -22,7 +22,7 @@ __tests__ = (
         "https://www.instagram.com/instagram/posts/",
         "https://www.instagram.com/instagram/reels/",
         "https://www.instagram.com/instagram/tagged/",
-    ],
+    ),
 },
 
 {
@@ -107,6 +107,11 @@ __tests__ = (
     "#url"     : "https://instagram.com/stories/geekmig/2724343156064789461",
     "#category": ("", "instagram", "stories"),
     "#class"   : instagram.InstagramStoriesExtractor,
+},
+
+{
+    "#url"     : "https://www.instagram.com/stories/me/",
+    "#class"   : instagram.InstagramStoriesTrayExtractor,
 },
 
 {
@@ -273,8 +278,35 @@ __tests__ = (
 
 {
     "#url"     : "https://www.instagram.com/reel/CDg_6Y1pxWu/",
-    "#category": ("", "instagram", "post"),
+    "#category": ("", "instagram", "reel"),
     "#class"   : instagram.InstagramPostExtractor,
 },
+
+{
+    "#url"     : "https://www.instagram.com/reels/CDg_6Y1pxWu/",
+    "#category": ("", "instagram", "reel"),
+    "#class"   : instagram.InstagramPostExtractor,
+},
+
+{
+    "#url"     : "https://www.instagram.com/share/BACiUUUYQV",
+    "#category": ("", "instagram", "post"),
+    "#class"   : instagram.InstagramPostExtractor,
+    "shortcode"  : "C6q-XdvsU5v",
+},
+
+{
+    "#url"     : "https://www.instagram.com/share/p/BACiUUUYQV",
+    "#category": ("", "instagram", "post"),
+    "#class"   : instagram.InstagramPostExtractor,
+    "shortcode"  : "C6q-XdvsU5v",
+},
+
+{
+    "#url"     : "https://www.instagram.com/share/reel/BARSSL4rTu",
+    "#category": ("", "instagram", "reel"),
+    "#class"   : instagram.InstagramPostExtractor,
+    "shortcode"  : "DHbVbT4Jx0c",
+}
 
 )

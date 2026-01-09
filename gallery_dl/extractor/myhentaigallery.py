@@ -6,26 +6,30 @@
 
 """Extractors for https://myhentaigallery.com/"""
 
-from .common import GalleryExtractor
+from .common import Extractor, GalleryExtractor, Message
 from .. import text, exception
 
+BASE_PATTERN = r"(?:https?://)?myhentaigallery\.com"
 
-class MyhentaigalleryGalleryExtractor(GalleryExtractor):
-    """Extractor for image galleries from myhentaigallery.com"""
+
+class MyhentaigalleryBase():
     category = "myhentaigallery"
     root = "https://myhentaigallery.com"
+
+
+class MyhentaigalleryGalleryExtractor(MyhentaigalleryBase, GalleryExtractor):
+    """Extractor for image galleries from myhentaigallery.com"""
     directory_fmt = ("{category}", "{gallery_id} {artist:?[/] /J, }{title}")
-    pattern = (r"(?:https?://)?myhentaigallery\.com"
-               r"/g(?:allery/(?:thumbnails|show))?/(\d+)")
+    pattern = BASE_PATTERN + r"/g(?:allery/(?:thumbnails|show))?/(\d+)"
     example = "https://myhentaigallery.com/g/12345"
 
     def __init__(self, match):
-        self.gallery_id = match.group(1)
-        url = "{}/g/{}".format(self.root, self.gallery_id)
+        self.gallery_id = match[1]
+        url = f"{self.root}/g/{self.gallery_id}"
         GalleryExtractor.__init__(self, match, url)
 
     def _init(self):
-        self.session.headers["Referer"] = self.gallery_url
+        self.session.headers["Referer"] = self.page_url
 
     def metadata(self, page):
         extr = text.extract_from(page)
@@ -53,3 +57,32 @@ class MyhentaigalleryGalleryExtractor(GalleryExtractor):
                 "/thumbnail/", "/original/"), None)
             for url in text.extract_iter(page, 'class="comic-thumb"', '</div>')
         ]
+
+
+class MyhentaigalleryTagExtractor(MyhentaigalleryBase, Extractor):
+    """Extractor for myhentaigallery tag searches"""
+    subcategory = "tag"
+    pattern = BASE_PATTERN + r"(/g/(artist|category|group|parody)/(\d+).*)"
+    example = "https://myhentaigallery.com/g/category/123"
+
+    def items(self):
+        data = {"_extractor": MyhentaigalleryGalleryExtractor}
+        for url in self.galleries():
+            yield Message.Queue, url, data
+
+    def galleries(self):
+        root = self.root
+        url = root + self.groups[0]
+
+        while True:
+            page = self.request(url).text
+
+            for inner in text.extract_iter(
+                    page, '<div class="comic-inner">', "<div"):
+                yield root + text.extr(inner, 'href="', '"')
+
+            try:
+                pos = page.index(">Next<")
+            except ValueError:
+                return
+            url = root + text.rextr(page, 'href="', '"', pos)

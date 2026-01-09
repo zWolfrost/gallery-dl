@@ -46,10 +46,10 @@ class DesktopographyExhibitionExtractor(DesktopographyExtractor):
 
     def __init__(self, match):
         DesktopographyExtractor.__init__(self, match)
-        self.year = match.group(1)
+        self.year = match[1]
 
     def items(self):
-        url = "{}/exhibition-{}/".format(self.root, self.year)
+        url = f"{self.root}/exhibition-{self.year}/"
         base_entry_url = "https://desktopography.net/portfolios/"
         page = self.request(url).text
 
@@ -75,14 +75,14 @@ class DesktopographyEntryExtractor(DesktopographyExtractor):
 
     def __init__(self, match):
         DesktopographyExtractor.__init__(self, match)
-        self.entry = match.group(1)
+        self.entry = match[1]
 
     def items(self):
-        url = "{}/portfolios/{}".format(self.root, self.entry)
+        url = f"{self.root}/portfolios/{self.entry}"
         page = self.request(url).text
 
         entry_data = {"entry": self.entry}
-        yield Message.Directory, entry_data
+        yield Message.Directory, "", entry_data
 
         for image_data in text.extract_iter(
                 page,

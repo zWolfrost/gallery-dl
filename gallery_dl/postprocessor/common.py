@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-# Copyright 2018-2023 Mike Fährmann
+# Copyright 2018-2025 Mike Fährmann
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License version 2 as
@@ -8,7 +8,7 @@
 
 """Common classes and constants used by postprocessor modules."""
 
-from .. import util, formatter, archive
+from .. import archive
 
 
 class PostProcessor():
@@ -21,15 +21,14 @@ class PostProcessor():
     def __repr__(self):
         return self.__class__.__name__
 
-    def _init_archive(self, job, options, prefix=None):
-        archive_path = options.get("archive")
-        if archive_path:
+    def _archive_init(self, job, options, prefix=None):
+        if archive_path := options.get("archive"):
             extr = job.extractor
-            archive_path = util.expand_path(archive_path)
 
+            archive_table = options.get("archive-table")
             archive_prefix = options.get("archive-prefix")
             if archive_prefix is None:
-                archive_prefix = extr.category
+                archive_prefix = extr.category if archive_table is None else ""
 
             archive_format = options.get("archive-format")
             if archive_format is None:
@@ -38,13 +37,14 @@ class PostProcessor():
                 archive_format = prefix + extr.archive_fmt
 
             try:
-                if "{" in archive_path:
-                    archive_path = formatter.parse(archive_path).format_map(
-                        job.pathfmt.kwdict)
-                self.archive = archive.DownloadArchive(
+                self.archive = archive.connect(
                     archive_path,
-                    archive_prefix + archive_format,
+                    archive_prefix,
+                    archive_format,
+                    archive_table,
+                    "file",
                     options.get("archive-pragma"),
+                    job.pathfmt.kwdict,
                     "_archive_" + self.name,
                 )
             except Exception as exc:
@@ -58,3 +58,9 @@ class PostProcessor():
 
         self.archive = None
         return False
+
+    def _archive_register(self, job):
+        job.register_hooks({"finalize": self._archive_close})
+
+    def _archive_close(self, _):
+        self.archive.close()

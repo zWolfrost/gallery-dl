@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
 # Copyright 2020 Leonid "Bepis" Pavel
-# Copyright 2023 Mike Fährmann
+# Copyright 2023-2025 Mike Fährmann
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License version 2 as
@@ -23,15 +23,14 @@ class ImagechestGalleryExtractor(GalleryExtractor):
     example = "https://imgchest.com/p/abcdefghijk"
 
     def __init__(self, match):
-        self.gallery_id = match.group(1)
+        self.gallery_id = match[1]
         url = self.root + "/p/" + self.gallery_id
         GalleryExtractor.__init__(self, match, url)
 
     def _init(self):
-        access_token = self.config("access-token")
-        if access_token:
+        if access_token := self.config("access-token"):
             self.api = ImagechestAPI(self, access_token)
-            self.gallery_url = None
+            self.page_url = None
             self.metadata = self._metadata_api
 
     def metadata(self, page):
@@ -54,11 +53,9 @@ class ImagechestGalleryExtractor(GalleryExtractor):
     def _metadata_api(self, page):
         post = self.api.post(self.gallery_id)
 
-        post["date"] = text.parse_datetime(
-            post["created"], "%Y-%m-%dT%H:%M:%S.%fZ")
+        post["date"] = self.parse_datetime_iso(post["created"])
         for img in post["images"]:
-            img["date"] = text.parse_datetime(
-                img["created"], "%Y-%m-%dT%H:%M:%S.%fZ")
+            img["date"] = self.parse_datetime_iso(img["created"])
 
         post["gallery_id"] = self.gallery_id
         post.pop("image_count", None)
@@ -97,7 +94,7 @@ class ImagechestUserExtractor(Extractor):
 
         while True:
             try:
-                data = self.request(url, params=params).json()["data"]
+                data = self.request_json(url, params=params)["data"]
             except (TypeError, KeyError):
                 return
 
@@ -152,4 +149,4 @@ class ImagechestAPI():
 
             else:
                 self.extractor.log.debug(response.text)
-                raise exception.StopExtraction("API request failed")
+                raise exception.AbortExtraction("API request failed")

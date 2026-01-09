@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-# Copyright 2022-2023 Mike Fährmann
+# Copyright 2022-2025 Mike Fährmann
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License version 2 as
@@ -23,9 +23,10 @@ class Test_CommandlineArguments(unittest.TestCase):
         try:
             cls.module = __import__(cls.module_name)
         except (ImportError, SyntaxError):
-            raise unittest.SkipTest("cannot import module '{}'".format(
-                cls.module_name))
+            raise unittest.SkipTest(
+                f"cannot import module '{cls.module_name}'")
         cls.default = ytdl.parse_command_line(cls.module, [])
+        cls.ytdlp = hasattr(cls.module, "cookies")
 
     def test_ignore_errors(self):
         self._("--ignore-errors" , "ignoreerrors", True)
@@ -41,8 +42,6 @@ class Test_CommandlineArguments(unittest.TestCase):
     def test_proxy(self):
         self._(["--proxy", "socks5://127.0.0.1:1080/"],
                "proxy", "socks5://127.0.0.1:1080/")
-        self._(["--cn-verification-proxy", "https://127.0.0.1"],
-               "cn_verification_proxy", "https://127.0.0.1")
         self._(["--geo-verification-proxy", "127.0.0.1"],
                "geo_verification_proxy", "127.0.0.1")
 
@@ -104,7 +103,10 @@ class Test_CommandlineArguments(unittest.TestCase):
                "geo_bypass_ip_block", "198.51.100.14/24")
 
     def test_headers(self):
-        headers = self.module.std_headers
+        try:
+            headers = self.module.utils.networking.std_headers
+        except AttributeError:
+            headers = self.module.std_headers
 
         self.assertNotEqual(headers["User-Agent"], "Foo/1.0")
         self._(["--user-agent", "Foo/1.0"])
@@ -155,21 +157,21 @@ class Test_CommandlineArguments(unittest.TestCase):
     def test_subs(self):
         opts = self._(["--convert-subs", "srt"])
         conv = {"key": "FFmpegSubtitlesConvertor", "format": "srt"}
-        if self.module_name == "yt_dlp":
+        if self.ytdlp:
             conv["when"] = "before_dl"
         self.assertEqual(opts["postprocessors"][0], conv)
 
     def test_embed(self):
         subs = {"key": "FFmpegEmbedSubtitle"}
         thumb = {"key": "EmbedThumbnail", "already_have_thumbnail": False}
-        if self.module_name == "yt_dlp":
+        if self.ytdlp:
             subs["already_have_subtitle"] = False
 
         opts = self._(["--embed-subs", "--embed-thumbnail"])
         self.assertEqual(opts["postprocessors"][:2], [subs, thumb])
 
         thumb["already_have_thumbnail"] = True
-        if self.module_name == "yt_dlp":
+        if self.ytdlp:
             subs["already_have_subtitle"] = True
             thumb["already_have_thumbnail"] = "all"
 
@@ -193,8 +195,6 @@ class Test_CommandlineArguments(unittest.TestCase):
         })
 
     def test_xattr(self):
-        self._("--xattr-set-filesize", "xattr_set_filesize", True)
-
         opts = self._("--xattrs")
         self.assertEqual(opts["postprocessors"][0], {"key": "XAttrMetadata"})
 
@@ -212,7 +212,7 @@ class Test_CommandlineArguments(unittest.TestCase):
             "--ignore-config",
         ]
 
-        if self.module_name != "yt_dlp":
+        if not self.ytdlp:
             cmdline.extend((
                 "--dump-json",
                 "--dump-single-json",

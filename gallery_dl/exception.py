@@ -11,21 +11,26 @@
 Class Hierarchy:
 
 Exception
- +-- GalleryDLException
-      +-- ExtractionError
-      |    +-- AuthenticationError
-      |    +-- AuthorizationError
-      |    +-- NotFoundError
-      |    +-- HttpError
-      +-- FormatError
-      |    +-- FilenameFormatError
-      |    +-- DirectoryFormatError
-      +-- FilterError
-      +-- InputFileError
-      +-- NoExtractorError
-      +-- StopExtraction
-      +-- TerminateExtraction
-      +-- RestartExtraction
+ └── GalleryDLException
+      ├── ExtractionError
+      │    ├── HttpError
+      │    │    └── ChallengeError
+      │    ├── AuthorizationError
+      │    │    └── AuthRequired
+      │    ├── AuthenticationError
+      │    └── NotFoundError
+      ├── InputError
+      │    ├── FormatError
+      │    │    ├── FilenameFormatError
+      │    │    └── DirectoryFormatError
+      │    ├── FilterError
+      │    ├── InputFileError
+      │    └── NoExtractorError
+      └── ControlException
+           ├── StopExtraction
+           ├── AbortExtraction
+           ├── TerminateExtraction
+           └── RestartExtraction
 """
 
 
@@ -39,20 +44,24 @@ class GalleryDLException(Exception):
         if not message:
             message = self.default
         elif isinstance(message, Exception):
-            message = "{}: {}".format(message.__class__.__name__, message)
-        if self.msgfmt and fmt:
-            message = self.msgfmt.format(message)
+            message = f"{message.__class__.__name__}: {message}"
+        if fmt and self.msgfmt is not None:
+            message = self.msgfmt.replace("{}", message)
+        self.message = message
         Exception.__init__(self, message)
 
 
+###############################################################################
+# Extractor Errors ############################################################
+
 class ExtractionError(GalleryDLException):
     """Base class for exceptions during information extraction"""
+    code = 4
 
 
 class HttpError(ExtractionError):
     """HTTP request during data extraction failed"""
     default = "HTTP request failed"
-    code = 4
 
     def __init__(self, message="", response=None):
         self.response = response
@@ -61,33 +70,69 @@ class HttpError(ExtractionError):
         else:
             self.status = response.status_code
             if not message:
-                message = "'{} {}' for '{}'".format(
-                    response.status_code, response.reason, response.url)
+                message = (f"'{response.status_code} {response.reason}' "
+                           f"for '{response.url}'")
         ExtractionError.__init__(self, message)
+
+
+class ChallengeError(HttpError):
+    code = 8
+
+    def __init__(self, challenge, response):
+        message = (
+            f"{challenge} ({response.status_code} {response.reason}) "
+            f"for '{response.url}'")
+        HttpError.__init__(self, message, response)
+
+
+class AuthenticationError(ExtractionError):
+    """Invalid or missing login credentials"""
+    default = "Invalid login credentials"
+    code = 16
+
+
+class AuthorizationError(ExtractionError):
+    """Insufficient privileges to access a resource"""
+    default = "Insufficient privileges to access this resource"
+    code = 16
+
+
+class AuthRequired(AuthorizationError):
+    default = "Account credentials required"
+
+    def __init__(self, auth=None, resource="resource", message=None):
+        if auth:
+            if not isinstance(auth, str):
+                auth = " or ".join(auth)
+
+            if resource:
+                if " " not in resource:
+                    resource = f"this {resource}"
+                resource = f" to access {resource}"
+            else:
+                resource = ""
+
+            message = f" ('{message}')" if message else ""
+            message = f"{auth} needed{resource}{message}"
+        AuthorizationError.__init__(self, message)
 
 
 class NotFoundError(ExtractionError):
     """Requested resource (gallery/image) could not be found"""
     msgfmt = "Requested {} could not be found"
     default = "resource (gallery/image)"
-    code = 8
 
 
-class AuthenticationError(ExtractionError):
-    """Invalid or missing login credentials"""
-    default = "Invalid or missing login credentials"
-    code = 16
+###############################################################################
+# User Input ##################################################################
 
-
-class AuthorizationError(ExtractionError):
-    """Insufficient privileges to access a resource"""
-    default = "Insufficient privileges to access the specified resource"
-    code = 16
-
-
-class FormatError(GalleryDLException):
-    """Error while building output paths"""
+class InputError(GalleryDLException):
+    """Error caused by user input and config options"""
     code = 32
+
+
+class FormatError(InputError):
+    """Error while building output paths"""
 
 
 class FilenameFormatError(FormatError):
@@ -100,40 +145,53 @@ class DirectoryFormatError(FormatError):
     msgfmt = "Applying directory format string failed ({})"
 
 
-class FilterError(GalleryDLException):
+class FilterError(InputError):
     """Error while evaluating a filter expression"""
     msgfmt = "Evaluating filter expression failed ({})"
-    code = 32
 
 
-class InputFileError(GalleryDLException):
-    """Error when parsing input file"""
-    code = 32
-
-    def __init__(self, message, *args):
-        GalleryDLException.__init__(
-            self, message % args if args else message)
+class InputFileError(InputError):
+    """Error when parsing an input file"""
 
 
-class NoExtractorError(GalleryDLException):
+class NoExtractorError(InputError):
     """No extractor can handle the given URL"""
-    code = 64
 
 
-class StopExtraction(GalleryDLException):
+###############################################################################
+# Control Flow ################################################################
+
+class ControlException(GalleryDLException):
+    code = 0
+
+
+class StopExtraction(ControlException):
     """Stop data extraction"""
 
-    def __init__(self, message=None, *args):
-        GalleryDLException.__init__(self)
-        self.message = message % args if args else message
-        self.code = 1 if message else 0
+    def __init__(self, target=None):
+        ControlException.__init__(self)
+
+        if target is None:
+            self.target = None
+            self.depth = 1
+        elif isinstance(target, int):
+            self.target = None
+            self.depth = target
+        elif target.isdecimal():
+            self.target = None
+            self.depth = int(target)
+        else:
+            self.target = target
+            self.depth = 128
 
 
-class TerminateExtraction(GalleryDLException):
+class AbortExtraction(ExtractionError, ControlException):
+    """Abort data extraction due to an error"""
+
+
+class TerminateExtraction(ControlException):
     """Terminate data extraction"""
-    code = 0
 
 
-class RestartExtraction(GalleryDLException):
+class RestartExtraction(ControlException):
     """Restart data extraction"""
-    code = 0

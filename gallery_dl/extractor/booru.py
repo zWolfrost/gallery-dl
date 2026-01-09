@@ -27,8 +27,7 @@ class BooruExtractor(BaseExtractor):
         notes = self.config("notes", False)
         fetch_html = tags or notes
 
-        url_key = self.config("url")
-        if url_key:
+        if url_key := self.config("url"):
             if isinstance(url_key, (list, tuple)):
                 self._file_url = self._file_url_list
                 self._file_url_keys = url_key
@@ -53,11 +52,12 @@ class BooruExtractor(BaseExtractor):
                 if notes:
                     self._notes(post, html)
 
-            text.nameext_from_url(url, post)
+            if "extension" not in post:
+                text.nameext_from_url(url, post)
             post.update(data)
             self._prepare(post)
 
-            yield Message.Directory, post
+            yield Message.Directory, "", post
             yield Message.Url, url, post
 
     def skip(self, num):

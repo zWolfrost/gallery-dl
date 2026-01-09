@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-# Copyright 2021-2023 Mike Fährmann
+# Copyright 2021-2025 Mike Fährmann
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License version 2 as
@@ -214,6 +214,7 @@ Request interval (default):
     def test_base_category(self):
         extr = TestExtractor.from_url("test:")
         extr.basecategory = "test_basecategory"
+        extr.basesubcategory = "test_basesubcategory"
 
         self.assertEqual(self._capture_stdout(extr), """\
 Category / Subcategory / Basecategory
@@ -282,7 +283,12 @@ class TestDataJob(TestJob):
         tjob = self.jobclass(extr, file=io.StringIO())
         tjob.run()
         self.assertEqual(
-            tjob.data[-1], ("ZeroDivisionError", "division by zero"))
+            tjob.data[-1],
+            (-1, {
+                "error"  : "ZeroDivisionError",
+                "message": "division by zero",
+            })
+        )
 
     def test_private(self):
         config.set(("output",), "private", True)
@@ -294,7 +300,7 @@ class TestDataJob(TestJob):
         for i in range(1, 4):
             self.assertEqual(
                 tjob.data[i][2]["_fallback"],
-                ("https://example.org/alt/{}.jpg".format(i),),
+                (f"https://example.org/alt/{i}.jpg",),
             )
 
     def test_sleep(self):
@@ -364,26 +370,26 @@ class TestExtractor(Extractor):
     def __init__(self, match):
         Extractor.__init__(self, match)
         self.user = {"id": 123, "name": "test"}
-        if match.group(1) == "self":
+        if match[1] == "self":
             self.user["self"] = self.user
 
     def items(self):
         root = "https://example.org"
         user = self.user
 
-        yield Message.Directory, {
+        yield Message.Directory, "", {
             "user": user,
             "author": user,
         }
 
         for i in range(1, 4):
-            url = "{}/{}.jpg".format(root, i)
+            url = f"{root}/{i}.jpg"
             yield Message.Url, url, text.nameext_from_url(url, {
                 "num" : i,
                 "tags": ["foo", "bar", "テスト"],
                 "user": user,
                 "author": user,
-                "_fallback": ("{}/alt/{}.jpg".format(root, i),),
+                "_fallback": (f"{root}/alt/{i}.jpg",),
             })
 
 

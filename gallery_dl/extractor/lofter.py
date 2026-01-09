@@ -29,7 +29,7 @@ class LofterExtractor(Extractor):
                 post = post["post"]
 
             post["blog_name"] = post["blogInfo"]["blogName"]
-            post["date"] = text.parse_timestamp(post["publishTime"] // 1000)
+            post["date"] = self.parse_timestamp(post["publishTime"] / 1000)
             post_type = post["type"]
 
             # Article
@@ -63,7 +63,7 @@ class LofterExtractor(Extractor):
                     post["id"], post_type)
 
             post["count"] = len(image_urls)
-            yield Message.Directory, post
+            yield Message.Directory, "", post
             for post["num"], url in enumerate(image_urls, 1):
                 yield Message.Url, url, text.nameext_from_url(url, post)
 
@@ -136,7 +136,7 @@ class LofterAPI():
 
         if info["meta"]["status"] != 200:
             self.extractor.log.debug("Server response: %s", info)
-            raise exception.StopExtraction("API request failed")
+            raise exception.AbortExtraction("API request failed")
 
         return info["response"]
 

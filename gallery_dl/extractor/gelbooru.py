@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-# Copyright 2014-2023 Mike Fährmann
+# Copyright 2014-2025 Mike Fährmann
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License version 2 as
@@ -26,11 +26,18 @@ class GelbooruBase():
     def _api_request(self, params, key="post", log=False):
         if "s" not in params:
             params["s"] = "post"
+
         params["api_key"] = self.api_key
         params["user_id"] = self.user_id
 
         url = self.root + "/index.php?page=dapi&q=index&json=1"
-        data = self.request(url, params=params).json()
+        try:
+            data = self.request_json(url, params=params)
+        except exception.HttpError as exc:
+            if exc.status == 401:
+                raise exception.AuthRequired(
+                    "'api-key' & 'user-id'", "the API")
+            raise
 
         if not key:
             return data
@@ -73,7 +80,7 @@ class GelbooruBase():
                 if id:
                     tag = "id:" + op
                     tags = [t for t in tags if not t.startswith(tag)]
-                tags = "{} id:{}".format(" ".join(tags), op)
+                tags = f"{' '.join(tags)} id:{op}"
 
         while True:
             posts = self._api_request(params)
@@ -107,20 +114,15 @@ class GelbooruBase():
                 return
             params["pid"] += self.per_page
 
-    @staticmethod
-    def _file_url(post):
+    def _file_url(self, post):
         url = post["file_url"]
         if url.endswith((".webm", ".mp4")):
+            post["_fallback"] = (url,)
             md5 = post["md5"]
-            path = "/images/{}/{}/{}.webm".format(md5[0:2], md5[2:4], md5)
-            post["_fallback"] = GelbooruBase._video_fallback(path)
-            url = "https://img3.gelbooru.com" + path
+            root = text.root_from_url(post["preview_url"])
+            path = f"/images/{md5[0:2]}/{md5[2:4]}/{md5}.webm"
+            url = root + path
         return url
-
-    @staticmethod
-    def _video_fallback(path):
-        yield "https://img2.gelbooru.com" + path
-        yield "https://img1.gelbooru.com" + path
 
     def _notes(self, post, page):
         notes_data = text.extr(page, '<section id="notes"', '</section>')
@@ -244,7 +246,7 @@ class GelbooruFavoriteExtractor(GelbooruBase,
 
             for fav in favs:
                 for post in self._api_request({"id": fav["favorite"]}):
-                    post["date_favorited"] = text.parse_timestamp(fav["added"])
+                    post["date_favorited"] = self.parse_timestamp(fav["added"])
                     yield post
 
             params["pid"] += 1
@@ -271,7 +273,7 @@ class GelbooruFavoriteExtractor(GelbooruBase,
 
             for fav in favs:
                 for post in self._api_request({"id": fav["favorite"]}):
-                    post["date_favorited"] = text.parse_timestamp(fav["added"])
+                    post["date_favorited"] = self.parse_timestamp(fav["added"])
                     yield post
 
             params["pid"] -= 1
@@ -297,7 +299,7 @@ class GelbooruRedirectExtractor(GelbooruBase, Extractor):
 
     def __init__(self, match):
         Extractor.__init__(self, match)
-        self.url_base64 = match.group(1)
+        self.url_base64 = match[1]
 
     def items(self):
         url = text.ensure_http_scheme(binascii.a2b_base64(

@@ -46,6 +46,13 @@ __tests__ = (
 },
 
 {
+    "#url"     : "https://www.zerochan.net/non_existant_tag",
+    "#comment" : "handle HttpError exception (#8313)",
+    "#class"   : zerochan.ZerochanTagExtractor,
+    "#count"   : 0,
+},
+
+{
     "#url"     : "https://www.zerochan.net/2920445",
     "#category": ("booru", "zerochan", "image"),
     "#class"   : zerochan.ZerochanImageExtractor,
@@ -119,7 +126,7 @@ __tests__ = (
     "#url"     : "https://www.zerochan.net/4233756",
     "#category": ("booru", "zerochan", "image"),
     "#class"   : zerochan.ZerochanImageExtractor,
-    "#urls"    : "https://static.zerochan.net/DRAGON.BALL.full.4233756.jpg",
+    "#results" : "https://static.zerochan.net/DRAGON.BALL.full.4233756.jpg",
     "#options" : {"tags": True},
 
     "author"   : "Raydash",
@@ -181,7 +188,7 @@ __tests__ = (
     "#url"     : "https://www.zerochan.net/4233756",
     "#class"   : zerochan.ZerochanImageExtractor,
     "#auth"    : False,
-    "#urls"    : "https://static.zerochan.net/DRAGON.BALL.full.4233756.jpg",
+    "#results" : "https://static.zerochan.net/DRAGON.BALL.full.4233756.jpg",
 
     "source"   : "https://x.com/Raydash30/status/1766012730769862774",
     "tags"     : [
@@ -248,6 +255,113 @@ __tests__ = (
         "Official Art from X",
         "Tory Patterson",
     ],
+},
+
+{
+    "#url"     : "https://www.zerochan.net/4354955",
+    "#comment" : "quotes in HTML tags",
+    "#category": ("booru", "zerochan", "image"),
+    "#class"   : zerochan.ZerochanImageExtractor,
+    "#auth"    : False,
+    "#options" : {"metadata": False},
+
+    "tags": [
+        "Mangaka:Tory Patterson",
+        "Studio:SEGA",
+        "Game:Sonic Origins",
+        "Series:Sonic the Hedgehog",
+        "Character:Miles \"Tails\" Prower",
+        "Theme:Airplane",
+        "Theme:Flying",
+        "Theme:Fox",
+        "Source:Character Sheet",
+        "Source:Official Art",
+        "Source:Official Art from X",
+        "Source:X (Twitter)",
+    ],
+},
+
+{
+    "#url"     : "https://www.zerochan.net/2275437",
+    "#comment" : "unicode escapes with surrogate pair (#7178)",
+    "#category": ("booru", "zerochan", "image"),
+    "#class"   : zerochan.ZerochanImageExtractor,
+    "#auth"    : False,
+    "#options" : {"metadata": False},
+
+    "author"   : "MAYO🍚",
+    "date"     : "dt:2018-02-25 16:03:48",
+    "extension": "png",
+    "file_url" : "https://static.zerochan.net/Kongou.full.2275437.png",
+    "filename" : "Kongou.full.2275437",
+    "width"    : 1047,
+    "height"   : 1365,
+    "id"       : 2275437,
+    "size"     : 502784,
+    "source"   : "",
+    "uploader" : "SubaruSumeragi",
+    "path"     : [
+        "Kantai Collection",
+        "Kongou",
+    ],
+    "tags"     : [
+        "Mangaka:MAYO🍚",
+        "Game:Kantai Collection",
+        "Character:Kongou"
+    ],
+},
+
+{
+    "#url"     : "https://www.zerochan.net/4147104",
+    "#comment" : "no 'author' in JSON-LD data (#7282)",
+    "#category": ("booru", "zerochan", "image"),
+    "#class"   : zerochan.ZerochanImageExtractor,
+    "#auth"    : False,
+
+    "author"   : "",
+    "date"     : "dt:2024-04-02 12:09:30",
+    "extension": "jpg",
+    "file_url" : "https://static.zerochan.net/Lycoris.Recoil.full.4147104.jpg",
+    "filename" : "Lycoris.Recoil.full.4147104",
+    "width"    : 1061,
+    "height"   : 1500,
+    "id"       : 4147104,
+    "size"     : 224256,
+    "source"   : "https://twitter.com/animetv_jp/status/1775101399648374835/",
+    "uploader" : "cutesherry",
+    "path"     : [
+        "Lycoris Recoil",
+    ],
+    "tags"     : [
+        "Studio:A-1 Pictures",
+        "Series:Lycoris Recoil",
+        "Character:Inoue Takina",
+        "Character:Nishikigi Chisato",
+        "Theme:Bench",
+        "Theme:Cherry Tree",
+        "Theme:Floating Hair",
+        "Theme:Sitting On Bench",
+        "Theme:Sneakers",
+        "Theme:Spring",
+        "Source:Key Visual",
+        "Source:Official Art",
+    ],
+},
+
+{
+    "#url"     : "https://www.zerochan.net/1",
+    "#category": ("booru", "zerochan", "image"),
+    "#class"   : zerochan.ZerochanImageExtractor,
+    "#count"   : 0,
+    "#log"     : "'deleted'",
+},
+
+{
+    "#url"     : "https://www.zerochan.net/9876540",
+    "#category": ("booru", "zerochan", "image"),
+    "#class"   : zerochan.ZerochanImageExtractor,
+    "#count"   : 0,
+    "#log"     : "'Not found'",
 },
 
 )

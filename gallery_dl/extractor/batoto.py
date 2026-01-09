@@ -7,8 +7,8 @@
 """Extractors for https://bato.to/"""
 
 from .common import Extractor, ChapterExtractor, MangaExtractor
-from .. import text, exception
-import re
+from .. import text, util
+from ..cache import memcache
 
 BASE_PATTERN = (r"(?:https?://)?("
                 r"(?:ba|d|f|h|j|m|w)to\.to|"
@@ -54,11 +54,23 @@ class BatotoBase():
     """Base class for batoto extractors"""
     category = "batoto"
     root = "https://xbato.org"
+    _warn_legacy = True
 
-    def _init_root(self, match):
-        domain = match.group(1)
-        if domain not in LEGACY_DOMAINS:
-            self.root = "https://" + domain
+    def _init_root(self):
+        domain = self.config("domain")
+        if domain is None or domain in {"auto", "url"}:
+            domain = self.groups[0]
+            if domain in LEGACY_DOMAINS:
+                if self._warn_legacy:
+                    BatotoBase._warn_legacy = False
+                    self.log.warning("Legacy domain '%s'", domain)
+        elif domain == "nolegacy":
+            domain = self.groups[0]
+            if domain in LEGACY_DOMAINS:
+                domain = "xbato.org"
+        elif domain == "nowarn":
+            domain = self.groups[0]
+        self.root = "https://" + domain
 
     def request(self, url, **kwargs):
         kwargs["encoding"] = "utf-8"
@@ -72,10 +84,10 @@ class BatotoChapterExtractor(BatotoBase, ChapterExtractor):
     example = "https://xbato.org/title/12345-MANGA/54321"
 
     def __init__(self, match):
-        self._init_root(match)
-        self.chapter_id = match.group(2)
-        url = "{}/title/0/{}".format(self.root, self.chapter_id)
-        ChapterExtractor.__init__(self, match, url)
+        ChapterExtractor.__init__(self, match, False)
+        self._init_root()
+        self.chapter_id = self.groups[1]
+        self.page_url = f"{self.root}/title/0/{self.chapter_id}"
 
     def metadata(self, page):
         extr = text.extract_from(page)
@@ -92,9 +104,9 @@ class BatotoChapterExtractor(BatotoBase, ChapterExtractor):
             info = text.remove_html(extr('link-hover">', "</"))
         info = text.unescape(info)
 
-        match = re.match(
+        match = text.re(
             r"(?i)(?:(?:Volume|S(?:eason)?)\s*(\d+)\s+)?"
-            r"(?:Chapter|Episode)\s*(\d+)([\w.]*)", info)
+            r"(?:Chapter|Episode)\s*(\d+)([\w.]*)").match(info)
         if match:
             volume, chapter, minor = match.groups()
         else:
@@ -102,8 +114,7 @@ class BatotoChapterExtractor(BatotoBase, ChapterExtractor):
             minor = ""
 
         return {
-            "manga"         : text.unescape(manga),
-            "manga_id"      : text.parse_int(manga_id),
+            **_manga_info(self, manga_id),
             "chapter_url"   : extr(self.chapter_id + "-ch_", '"'),
             "title"         : text.unescape(text.remove_html(extr(
                 "selected>", "</option")).partition(" : ")[2]),
@@ -112,15 +123,17 @@ class BatotoChapterExtractor(BatotoBase, ChapterExtractor):
             "chapter_minor" : minor,
             "chapter_string": info,
             "chapter_id"    : text.parse_int(self.chapter_id),
-            "date"          : text.parse_timestamp(extr(' time="', '"')[:-3]),
+            "date"          : self.parse_timestamp(extr(' time="', '"')[:-3]),
         }
 
     def images(self, page):
-        images_container = text.extr(page, 'pageOpts', ':[0,0]}"')
-        images_container = text.unescape(images_container)
+        container = text.unescape(text.extr(page, 'pageOpts', ':[0,0]}"'))
+
         return [
-            (url, None)
-            for url in text.extract_iter(images_container, r"\"", r"\"")
+            ((url.replace("://k", "://n", 1)
+              if url.startswith("https://k") and ".mb" in url else
+              url), None)
+            for url in text.extract_iter(container, r"\"", r"\"")
         ]
 
 
@@ -133,25 +146,18 @@ class BatotoMangaExtractor(BatotoBase, MangaExtractor):
     example = "https://xbato.org/title/12345-MANGA/"
 
     def __init__(self, match):
-        self._init_root(match)
-        self.manga_id = match.group(2) or match.group(3)
-        url = "{}/title/{}".format(self.root, self.manga_id)
-        MangaExtractor.__init__(self, match, url)
+        MangaExtractor.__init__(self, match, False)
+        self._init_root()
+        self.manga_id = self.groups[1] or self.groups[2]
+        self.page_url = f"{self.root}/title/{self.manga_id}"
 
     def chapters(self, page):
         extr = text.extract_from(page)
-
-        warning = extr(' class="alert alert-warning">', "</div><")
-        if warning:
-            raise exception.StopExtraction("'%s'", text.remove_html(warning))
-
-        data = {
-            "manga_id": text.parse_int(self.manga_id),
-            "manga"   : text.unescape(extr(
-                "<title>", "<").rpartition(" - ")[0]),
-        }
-
+        if warning := extr(' class="alert alert-warning">', "</div>"):
+            self.log.warning("'%s'", text.remove_html(warning))
         extr('<div data-hk="0-0-0-0"', "")
+        data = _manga_info(self, self.manga_id, page)
+
         results = []
         while True:
             href = extr('<a href="/title/', '"')
@@ -163,9 +169,46 @@ class BatotoMangaExtractor(BatotoBase, MangaExtractor):
 
             data["chapter"] = text.parse_int(chapter)
             data["chapter_minor"] = sep + minor
-            data["date"] = text.parse_datetime(
-                extr('time="', '"'), "%Y-%m-%dT%H:%M:%S.%fZ")
+            data["date"] = self.parse_datetime_iso(extr('time="', '"'))
 
-            url = "{}/title/{}".format(self.root, href)
+            url = f"{self.root}/title/{href}"
             results.append((url, data.copy()))
         return results
+
+
+@memcache(keyarg=1)
+def _manga_info(self, manga_id, page=None):
+    if page is None:
+        url = f"{self.root}/title/{manga_id}"
+        page = self.request(url).text
+
+    props = text.extract(page, 'props="', '"', page.find(' prefix="r20" '))[0]
+    data = util.json_loads(text.unescape(props))["data"][1]
+
+    return {
+        "manga"      : data["name"][1],
+        "manga_id"   : text.parse_int(manga_id),
+        "manga_slug" : data["slug"][1],
+        "manga_date" : self.parse_timestamp(
+            data["dateCreate"][1] / 1000),
+        "manga_date_updated": self.parse_timestamp(
+            data["dateUpdate"][1] / 1000),
+        "author"     : json_list(data["authors"]),
+        "artist"     : json_list(data["artists"]),
+        "genre"      : json_list(data["genres"]),
+        "lang"       : data["tranLang"][1],
+        "lang_orig"  : data["origLang"][1],
+        "status"     : data["originalStatus"][1],
+        "published"  : data["originalPubFrom"][1],
+        "description": data["summary"][1]["code"][1],
+        "cover"      : data["urlCoverOri"][1],
+        "uploader"   : data["userId"][1],
+        "score"      : data["stat_score_avg"][1],
+    }
+
+
+def json_list(value):
+    return [
+        item[1].replace("_", " ")
+        for item in util.json_loads(value[1].replace('\\"', '"'))
+    ]

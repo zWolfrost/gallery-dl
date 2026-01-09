@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-# Copyright 2014-2023 Mike Fährmann
+# Copyright 2014-2025 Mike Fährmann
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License version 2 as
@@ -10,7 +10,6 @@
 
 from .common import Extractor, Message
 from .. import text
-import re
 
 
 class ImagebamExtractor(Extractor):
@@ -20,22 +19,21 @@ class ImagebamExtractor(Extractor):
 
     def __init__(self, match):
         Extractor.__init__(self, match)
-        self.path = match.group(1)
+        self.path = match[1]
 
     def _init(self):
         self.cookies.set("nsfw_inter", "1", domain="www.imagebam.com")
+        self.cookies.set("sfw_inter", "1", domain="www.imagebam.com")
 
     def _parse_image_page(self, path):
         page = self.request(self.root + path).text
         url, pos = text.extract(page, '<img src="https://images', '"')
         filename = text.unescape(text.extract(page, 'alt="', '"', pos)[0])
 
-        data = {
+        return text.nameext_from_name(filename, {
             "url"      : "https://images" + url,
             "image_key": path.rpartition("/")[2],
-        }
-        data["filename"], _, data["extension"] = filename.rpartition(".")
-        return data
+        })
 
 
 class ImagebamGalleryExtractor(ImagebamExtractor):
@@ -58,28 +56,25 @@ class ImagebamGalleryExtractor(ImagebamExtractor):
         data["count"] = len(images)
         data["gallery_key"] = self.path.rpartition("/")[2]
 
-        yield Message.Directory, data
+        yield Message.Directory, "", data
         for data["num"], path in enumerate(images, 1):
             image = self._parse_image_page(path)
             image.update(data)
             yield Message.Url, image["url"], image
 
-    @staticmethod
-    def metadata(page):
+    def metadata(self, page):
         return {"title": text.unescape(text.extr(
             page, 'id="gallery-name">', '<').strip())}
 
     def images(self, page):
-        findall = re.compile(r'<a href="https://www\.imagebam\.com'
-                             r'(/(?:image/|view/M)[a-zA-Z0-9]+)').findall
-
+        findall = text.re(r'<a href="https://www\.imagebam\.com'
+                          r'(/(?:image/|view/M)[a-zA-Z0-9]+)').findall
         paths = []
         while True:
             paths += findall(page)
             pos = page.find('rel="next" aria-label="Next')
             if pos > 0:
-                url = text.rextract(page, 'href="', '"', pos)[0]
-                if url:
+                if url := text.rextr(page, 'href="', '"', pos):
                     page = self.request(url).text
                     continue
             return paths
@@ -99,5 +94,5 @@ class ImagebamImageExtractor(ImagebamExtractor):
             path = ("/view/" if path[10] == "M" else "/image/") + path[10:]
 
         image = self._parse_image_page(path)
-        yield Message.Directory, image
+        yield Message.Directory, "", image
         yield Message.Url, image["url"], image

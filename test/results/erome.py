@@ -5,6 +5,7 @@
 # published by the Free Software Foundation.
 
 from gallery_dl.extractor import erome
+from gallery_dl import exception
 
 
 __tests__ = (
@@ -39,17 +40,54 @@ __tests__ = (
 },
 
 {
+    "#url"     : "https://www.erome.com/a/qlV5z90y",
+    "#comment" : "deleted album (#8665)",
+    "#class"   : erome.EromeAlbumExtractor,
+    "#exception": exception.AbortExtraction,
+},
+
+{
+    "#url"     : "https://www.erome.com/a/ACGo2Pmy",
+    "#comment" : "copyrighted album (#8665)",
+    "#class"   : erome.EromeAlbumExtractor,
+    "#exception": exception.AbortExtraction,
+},
+
+{
     "#url"     : "https://www.erome.com/yYgWBZw8o8qsMzM",
     "#category": ("", "erome", "user"),
     "#class"   : erome.EromeUserExtractor,
-    "#range"   : "1-25",
-    "#count"   : 25,
+    "#pattern" : erome.EromeAlbumExtractor.pattern,
+    "#count"   : 88,
+},
+
+{
+    "#url"     : "https://www.erome.com/yYgWBZw8o8qsMzM?t=reposts",
+    "#class"   : erome.EromeUserExtractor,
+    "#count"   : 0,
+},
+
+{
+    "#url"     : "https://www.erome.com/john3884",
+    "#class"   : erome.EromeUserExtractor,
+    "#count"   : 0,
+},
+
+{
+    "#url"     : "https://www.erome.com/john3884",
+    "#class"   : erome.EromeUserExtractor,
+    "#options" : {"reposts": True},
+    "#results" : (
+        "https://www.erome.com/a/NQgdlWvk",
+        "https://www.erome.com/a/TdbZ4ogi",
+    ),
 },
 
 {
     "#url"     : "https://www.erome.com/search?q=cute",
     "#category": ("", "erome", "search"),
     "#class"   : erome.EromeSearchExtractor,
+    "#pattern" : erome.EromeAlbumExtractor.pattern,
     "#range"   : "1-25",
     "#count"   : 25,
 },

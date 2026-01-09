@@ -14,6 +14,15 @@ __tests__ = (
     "#class"   : rule34us.Rule34usTagExtractor,
     "#pattern" : r"https://img\d*\.rule34\.us/images/../../[0-9a-f]{32}\.\w+",
     "#count"   : 10,
+
+    "search_tags": "[terios]_elysion",
+},
+
+{
+    "#url"     : "https://rule34.us/index.php?r=posts/index&q=",
+    "#comment" : "empty 'q' query parameter (#8546)",
+    "#category": ("booru", "rule34us", "tag"),
+    "#class"   : rule34us.Rule34usTagExtractor,
 },
 
 {
@@ -28,8 +37,9 @@ __tests__ = (
     "#url"     : "https://rule34.us/index.php?r=posts/view&id=4576310",
     "#category": ("booru", "rule34us", "post"),
     "#class"   : rule34us.Rule34usPostExtractor,
-    "#pattern" : r"https://video-cdn\d\.rule34\.us/images/a2/94/a294ff8e1f8e0efa041e5dc9d1480011\.mp4",
+    "#results" : "https://video.rule34.us/images/a2/94/a294ff8e1f8e0efa041e5dc9d1480011.mp4",
 
+    "_fallback"    : ("https://video-cdn1.rule34.us/images/a2/94/a294ff8e1f8e0efa041e5dc9d1480011.mp4",),
     "extension"    : "mp4",
     "file_url"     : str,
     "filename"     : "a294ff8e1f8e0efa041e5dc9d1480011",

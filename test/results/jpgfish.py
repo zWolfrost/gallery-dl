@@ -9,17 +9,52 @@ from gallery_dl.extractor import chevereto
 
 __tests__ = (
 {
-    "#url"     : "https://jpg4.su/img/funnymeme.LecXGS",
+    "#url"     : "https://jpg7.cr/img/funnymeme.LecXGS",
     "#category": ("chevereto", "jpgfish", "image"),
     "#class"   : chevereto.CheveretoImageExtractor,
-    "#urls"        : "https://simp3.jpg5.su/images/funnymeme.jpg",
+    "#results"     : "https://simp3.selti-delivery.ru/images/funnymeme.jpg",
     "#sha1_content": "098e5e9b17ad634358426e0ffd1c93871474d13c",
 
     "album"    : "",
+    "album_id" : "",
+    "album_slug": "",
+    "date"     : "dt:2022-06-05 03:24:25",
     "extension": "jpg",
     "filename" : "funnymeme",
     "id"       : "LecXGS",
-    "url"      : "https://simp3.jpg5.su/images/funnymeme.jpg",
+    "url"      : "https://simp3.selti-delivery.ru/images/funnymeme.jpg",
+    "user"     : "exearco",
+},
+
+{
+    "#url"     : "https://jpg4.su/img/funnymeme.LecXGS",
+    "#category": ("chevereto", "jpgfish", "image"),
+    "#class"   : chevereto.CheveretoImageExtractor,
+    "#results" : "https://simp3.selti-delivery.ru/images/funnymeme.jpg",
+
+    "album"    : "",
+    "date"     : "dt:2022-06-05 03:24:25",
+    "extension": "jpg",
+    "filename" : "funnymeme",
+    "id"       : "LecXGS",
+    "url"      : "https://simp3.selti-delivery.ru/images/funnymeme.jpg",
+    "user"     : "exearco",
+},
+
+{
+    "#url"     : "https://jpg6.su/img/LecXGS/",
+    "#comment" : "image ID without name (#8307)",
+    "#category": ("chevereto", "jpgfish", "image"),
+    "#class"   : chevereto.CheveretoImageExtractor,
+    "#results"     : "https://simp3.selti-delivery.ru/images/funnymeme.jpg",
+    "#sha1_content": "098e5e9b17ad634358426e0ffd1c93871474d13c",
+
+    "album"    : "",
+    "date"     : "dt:2022-06-05 03:24:25",
+    "extension": "jpg",
+    "filename" : "funnymeme",
+    "id"       : "LecXGS",
+    "url"      : str,
     "user"     : "exearco",
 },
 
@@ -27,9 +62,13 @@ __tests__ = (
     "#url"     : "https://jpg.church/img/auCruA",
     "#category": ("chevereto", "jpgfish", "image"),
     "#class"   : chevereto.CheveretoImageExtractor,
-    "#pattern" : r"https://simp2\.jpg5\.su/hannahowo_00457\.jpg",
+    "#results" : "https://simp2.selti-delivery.ru/hannahowo_00457.jpg",
 
-    "album": "401-500",
+    "album"     : "401-500",
+    "album_id"  : "atYaG",
+    "album_slug": "401-500",
+    "date"      : "dt:2022-03-23 13:50:52",
+    "id"        : "auCruA",
 },
 
 {
@@ -69,10 +108,22 @@ __tests__ = (
 },
 
 {
+    "#url"     : "https://www.jpg6.su/img/funnymeme.LecXGS",
+    "#category": ("chevereto", "jpgfish", "image"),
+    "#class"   : chevereto.CheveretoImageExtractor,
+},
+
+{
     "#url"     : "https://jpg1.su/album/CDilP/?sort=date_desc&page=1",
     "#category": ("chevereto", "jpgfish", "album"),
     "#class"   : chevereto.CheveretoAlbumExtractor,
     "#count"   : 2,
+
+    "album"     : "funny meme album",
+    "album_id"  : "CDilP",
+    "album_slug": "funny-meme-album",
+    "count"     : 2,
+    "num"       : range(1, 2),
 },
 
 {
@@ -80,6 +131,12 @@ __tests__ = (
     "#category": ("chevereto", "jpgfish", "album"),
     "#class"   : chevereto.CheveretoAlbumExtractor,
     "#count"   : 114,
+
+    "album"     : "Gunggingnsk OF",
+    "album_id"  : "N9OOI",
+    "album_slug": "gunggingnsk",
+    "count"     : 114,
+    "num"       : range(1, 114),
 },
 
 {
@@ -87,6 +144,12 @@ __tests__ = (
     "#category": ("chevereto", "jpgfish", "album"),
     "#class"   : chevereto.CheveretoAlbumExtractor,
     "#count"   : 100,
+
+    "album"     : "101-200",
+    "album_id"  : "aNJ6A",
+    "album_slug": "101-200",
+    "count"     : 100,
+    "num"       : range(1, 100),
 },
 
 {
@@ -94,6 +157,12 @@ __tests__ = (
     "#category": ("chevereto", "jpgfish", "album"),
     "#class"   : chevereto.CheveretoAlbumExtractor,
     "#count"   : 606,
+
+    "album"     : "re:([1-5]0)?1-[1-6]00",
+    "album_id"  : str,
+    "album_slug": str,
+    "count"     : {100, 106},
+    "num"       : range(1, 106),
 },
 
 {

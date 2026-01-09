@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-# Copyright 2019-2023 Mike Fährmann
+# Copyright 2019-2025 Mike Fährmann
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License version 2 as
@@ -53,8 +53,7 @@ class MangoxoExtractor(Extractor):
             raise exception.AuthenticationError(data.get("msg"))
         return {"SESSION": self.cookies.get("SESSION")}
 
-    @staticmethod
-    def _sign_by_md5(username, password, token):
+    def _sign_by_md5(self, username, password, token):
         # https://dns.mangoxo.com/libs/plugins/phoenix-ui/js/phoenix-ui.js
         params = [
             ("username" , username),
@@ -68,8 +67,7 @@ class MangoxoExtractor(Extractor):
         params.append(("sign", sign.upper()))
         return params
 
-    @staticmethod
-    def _total_pages(page):
+    def _total_pages(self, page):
         return text.parse_int(text.extract(page, "total :", ",")[0])
 
 
@@ -84,16 +82,16 @@ class MangoxoAlbumExtractor(MangoxoExtractor):
 
     def __init__(self, match):
         MangoxoExtractor.__init__(self, match)
-        self.album_id = match.group(1)
+        self.album_id = match[1]
 
     def items(self):
         self.login()
-        url = "{}/album/{}/".format(self.root, self.album_id)
+        url = f"{self.root}/album/{self.album_id}/"
         page = self.request(url).text
         data = self.metadata(page)
         imgs = self.images(url, page)
 
-        yield Message.Directory, data
+        yield Message.Directory, "", data
 
         data["extension"] = None
         for data["num"], path in enumerate(imgs, 1):
@@ -121,7 +119,7 @@ class MangoxoAlbumExtractor(MangoxoExtractor):
             "album": {
                 "id": self.album_id,
                 "name": text.unescape(title),
-                "date": text.parse_datetime(date.strip(), "%Y.%m.%d %H:%M"),
+                "date": self.parse_datetime(date.strip(), "%Y.%m.%d %H:%M"),
                 "description": text.unescape(descr),
             },
             "count": text.parse_int(count),
@@ -149,12 +147,12 @@ class MangoxoChannelExtractor(MangoxoExtractor):
 
     def __init__(self, match):
         MangoxoExtractor.__init__(self, match)
-        self.user = match.group(1)
+        self.user = match[1]
 
     def items(self):
         self.login()
         num = total = 1
-        url = "{}/{}/album/".format(self.root, self.user)
+        url = f"{self.root}/{self.user}/album/"
         data = {"_extractor": MangoxoAlbumExtractor}
 
         while True:

@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-# Copyright 2017-2023 Mike Fährmann
+# Copyright 2017-2025 Mike Fährmann
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License version 2 as
@@ -17,7 +17,7 @@ class RedditExtractor(Extractor):
     """Base class for reddit extractors"""
     category = "reddit"
     directory_fmt = ("{category}", "{subreddit}")
-    filename_fmt = "{id}{num:? //>02} {title[:220]}.{extension}"
+    filename_fmt = "{id}{num:? //>02} {title|link_title:[:220]}.{extension}"
     archive_fmt = "{filename}"
     cookies_domain = ".reddit.com"
     request_interval = 0.6
@@ -33,13 +33,17 @@ class RedditExtractor(Extractor):
         previews = self.config("previews", True)
         embeds = self.config("embeds", True)
 
-        videos = self.config("videos", True)
-        if videos:
-            if videos == "ytdl":
-                self._extract_video = self._extract_video_ytdl
-            elif videos == "dash":
+        if videos := self.config("videos", "dash"):
+            if videos == "dash":
                 self._extract_video = self._extract_video_dash
+            elif videos == "ytdl":
+                self._extract_video = self._extract_video_ytdl
             videos = True
+
+        selftext = self.config("selftext")
+        if selftext is None:
+            selftext = self.api.comments
+        selftext = True if selftext else False
 
         submissions = self.submissions()
         visited = set()
@@ -52,9 +56,10 @@ class RedditExtractor(Extractor):
                 urls = []
 
                 if submission:
-                    submission["date"] = text.parse_timestamp(
+                    submission["comment"] = None
+                    submission["date"] = self.parse_timestamp(
                         submission["created_utc"])
-                    yield Message.Directory, submission
+                    yield Message.Directory, "", submission
                     visited.add(submission["id"])
                     submission["num"] = 0
 
@@ -80,43 +85,56 @@ class RedditExtractor(Extractor):
                             text.nameext_from_url(url, submission)
                             yield Message.Url, url, submission
 
+                    elif embeds and "media_metadata" in media:
+                        for embed in self._extract_embed(submission, media):
+                            submission["num"] += 1
+                            text.nameext_from_url(embed, submission)
+                            yield Message.Url, embed, submission
+
                     elif media["is_video"]:
                         if videos:
                             text.nameext_from_url(url, submission)
+                            if not submission["extension"]:
+                                submission["extension"] = "mp4"
                             url = "ytdl:" + self._extract_video(media)
                             yield Message.Url, url, submission
 
                     elif not submission["is_self"]:
                         urls.append((url, submission))
 
+                    if selftext and (txt := submission["selftext_html"]):
+                        for url in text.extract_iter(txt, ' href="', '"'):
+                            urls.append((url, submission))
+
                 elif parentdir:
-                    yield Message.Directory, comments[0]
+                    yield Message.Directory, "", comments[0]
 
                 if self.api.comments:
-                    if submission:
-                        for url in text.extract_iter(
-                                submission["selftext_html"] or "",
-                                ' href="', '"'):
-                            urls.append((url, submission))
+                    if comments and not submission:
+                        submission = comments[0]
+                        submission.setdefault("num", 0)
+                        if not parentdir:
+                            yield Message.Directory, "", submission
+
                     for comment in comments:
+                        media = (embeds and "media_metadata" in comment)
                         html = comment["body_html"] or ""
                         href = (' href="' in html)
-                        media = (embeds and "media_metadata" in comment)
 
-                        if media or href:
-                            comment["date"] = text.parse_timestamp(
-                                comment["created_utc"])
-                            if submission:
-                                data = submission.copy()
-                                data["comment"] = comment
-                            else:
-                                data = comment
+                        if not media and not href:
+                            continue
+
+                        data = submission.copy()
+                        data["comment"] = comment
+                        comment["date"] = self.parse_timestamp(
+                            comment["created_utc"])
 
                         if media:
-                            for embed in self._extract_embed(comment):
-                                submission["num"] += 1
-                                text.nameext_from_url(embed, submission)
-                                yield Message.Url, embed, submission
+                            for url in self._extract_embed(data, comment):
+                                data["num"] += 1
+                                text.nameext_from_url(url, data)
+                                yield Message.Url, url, data
+                            submission["num"] = data["num"]
 
                         if href:
                             for url in text.extract_iter(html, ' href="', '"'):
@@ -134,9 +152,8 @@ class RedditExtractor(Extractor):
                     )):
                         continue
 
-                    match = match_submission(url)
-                    if match:
-                        extra.append(match.group(1))
+                    if match := match_submission(url):
+                        extra.append(match[1])
                     elif not match_user(url) and not match_subreddit(url):
                         if previews and "comment" not in data and \
                                 "preview" in data:
@@ -176,8 +193,7 @@ class RedditExtractor(Extractor):
                     submission["id"], item["media_id"], data.get("status"))
                 continue
             src = data["s"]
-            url = src.get("u") or src.get("gif") or src.get("mp4")
-            if url:
+            if url := src.get("u") or src.get("gif") or src.get("mp4"):
                 yield url.partition("?")[0].replace("/preview.", "/i.", 1)
             else:
                 self.log.error(
@@ -185,26 +201,32 @@ class RedditExtractor(Extractor):
                     submission["id"], item["media_id"])
                 self.log.debug(src)
 
-    def _extract_embed(self, submission):
-        meta = submission["media_metadata"]
+    def _extract_embed(self, submission, media):
+        meta = media["media_metadata"]
         if not meta:
             return
 
         for mid, data in meta.items():
-            if data["status"] != "valid" or "s" not in data:
+            if data["status"] != "valid":
                 self.log.warning(
                     "embed %s: skipping item %s (status: %s)",
                     submission["id"], mid, data.get("status"))
                 continue
-            src = data["s"]
-            url = src.get("u") or src.get("gif") or src.get("mp4")
-            if url:
-                yield url.partition("?")[0].replace("/preview.", "/i.", 1)
-            else:
-                self.log.error(
-                    "embed %s: unable to fetch download URL for item %s",
-                    submission["id"], mid)
-                self.log.debug(src)
+
+            if src := data.get("s"):
+                if url := src.get("u") or src.get("gif") or src.get("mp4"):
+                    yield url.partition("?")[0].replace("/preview.", "/i.", 1)
+                else:
+                    self.log.error(
+                        "embed %s: unable to fetch download URL for item %s",
+                        submission["id"], mid)
+                    self.log.debug(src)
+            elif url := data.get("dashUrl"):
+                submission["_ytdl_manifest"] = "dash"
+                yield "ytdl:" + url
+            elif url := data.get("hlsUrl"):
+                submission["_ytdl_manifest"] = "hls"
+                yield "ytdl:" + url
 
     def _extract_video_ytdl(self, submission):
         return "https://www.reddit.com" + submission["permalink"]
@@ -237,8 +259,7 @@ class RedditExtractor(Extractor):
 
         try:
             for image in post["preview"]["images"]:
-                variants = image.get("variants")
-                if variants:
+                if variants := image.get("variants"):
                     if "gif" in variants:
                         yield variants["gif"]["source"]["url"]
                     if "mp4" in variants:
@@ -259,6 +280,8 @@ class RedditSubredditExtractor(RedditExtractor):
         self.subreddit, sub, params = match.groups()
         self.params = text.parse_query(params)
         if sub:
+            if sub == "search" and "restrict_sr" not in self.params:
+                self.params["restrict_sr"] = "1"
             self.subcategory += "-" + sub
         RedditExtractor.__init__(self, match)
 
@@ -296,13 +319,13 @@ class RedditSubmissionExtractor(RedditExtractor):
     """Extractor for URLs from a submission on reddit.com"""
     subcategory = "submission"
     pattern = (r"(?:https?://)?(?:"
-               r"(?:\w+\.)?reddit\.com/(?:(?:r|u|user)/[^/?#]+"
-               r"/comments|gallery)|redd\.it)/([a-z0-9]+)")
+               r"(?:\w+\.)?reddit\.com/(?:(?:(?:r|u|user)/[^/?#]+/)?"
+               r"comments|gallery)|redd\.it)/([a-z0-9]+)")
     example = "https://www.reddit.com/r/SUBREDDIT/comments/id/"
 
     def __init__(self, match):
         RedditExtractor.__init__(self, match)
-        self.submission_id = match.group(1)
+        self.submission_id = match[1]
 
     def submissions(self):
         return (self.api.submission(self.submission_id),)
@@ -319,19 +342,19 @@ class RedditImageExtractor(Extractor):
 
     def __init__(self, match):
         Extractor.__init__(self, match)
-        domain = match.group(1)
-        self.path = match.group(2)
+        domain = match[1]
+        self.path = match[2]
         if domain == "preview.redd.it":
             self.domain = "i.redd.it"
             self.query = ""
         else:
             self.domain = domain
-            self.query = match.group(3) or ""
+            self.query = match[3] or ""
 
     def items(self):
-        url = "https://{}/{}{}".format(self.domain, self.path, self.query)
+        url = f"https://{self.domain}/{self.path}{self.query}"
         data = text.nameext_from_url(url)
-        yield Message.Directory, data
+        yield Message.Directory, "", data
         yield Message.Url, url, data
 
 
@@ -348,12 +371,10 @@ class RedditRedirectExtractor(Extractor):
         sub_type, subreddit, share_url = self.groups
         if sub_type == "u":
             sub_type = "user"
-        url = "https://www.reddit.com/{}/{}/s/{}".format(
-            sub_type, subreddit, share_url)
+        url = f"https://www.reddit.com/{sub_type}/{subreddit}/s/{share_url}"
+        location = self.request_location(url, notfound="submission")
         data = {"_extractor": RedditSubmissionExtractor}
-        response = self.request(url, method="HEAD", allow_redirects=False,
-                                notfound="submission")
-        yield Message.Queue, response.headers["Location"], data
+        yield Message.Queue, location, data
 
 
 class RedditAPI():
@@ -361,6 +382,7 @@ class RedditAPI():
 
     Ref: https://www.reddit.com/dev/api/
     """
+    ROOT = "https://oauth.reddit.com"
     CLIENT_ID = "6N9uN0krSDE-ig"
     USER_AGENT = "Python:gallery-dl:0.8.4 (by /u/mikf1)"
 
@@ -369,41 +391,50 @@ class RedditAPI():
         self.log = extractor.log
 
         config = extractor.config
+
         self.comments = text.parse_int(config("comments", 0))
         self.morecomments = config("morecomments", False)
+        self._warn_429 = False
 
-        client_id = config("client-id")
-        if client_id is None:
-            self.client_id = self.CLIENT_ID
-            self.headers = {"User-Agent": self.USER_AGENT}
+        if config("api") != "oauth":
+            self.root = "https://www.reddit.com"
+            self.headers = None
+            self.authenticate = util.noop
+            self.log.debug("Using REST API")
         else:
-            self.client_id = client_id
-            self.headers = {"User-Agent": config("user-agent")}
+            self.root = self.ROOT
 
-        if self.client_id == self.CLIENT_ID:
-            client_id = self.client_id
-            self._warn_429 = True
-            kind = "default"
-        else:
-            client_id = client_id[:5] + "*" * (len(client_id)-5)
-            self._warn_429 = False
-            kind = "custom"
+            client_id = config("client-id")
+            if client_id is None:
+                self.client_id = self.CLIENT_ID
+                self.headers = {"User-Agent": self.USER_AGENT}
+            else:
+                self.client_id = client_id
+                self.headers = {"User-Agent": config("user-agent")}
 
-        self.log.debug(
-            "Using %s API credentials (client-id %s)", kind, client_id)
+            if self.client_id == self.CLIENT_ID:
+                client_id = self.client_id
+                self._warn_429 = True
+                kind = "default"
+            else:
+                client_id = client_id[:5] + "*" * (len(client_id)-5)
+                kind = "custom"
 
-        token = config("refresh-token")
-        if token is None or token == "cache":
-            key = "#" + self.client_id
-            self.refresh_token = _refresh_token_cache(key)
-        else:
-            self.refresh_token = token
+            self.log.debug(
+                "Using %s API credentials (client-id %s)", kind, client_id)
 
-        if not self.refresh_token:
-            # allow downloading from quarantined subreddits (#2180)
-            extractor.cookies.set(
-                "_options", '%7B%22pref_quarantine_optin%22%3A%20true%7D',
-                domain=extractor.cookies_domain)
+            token = config("refresh-token")
+            if token is None or token == "cache":
+                key = "#" + self.client_id
+                self.refresh_token = _refresh_token_cache(key)
+            else:
+                self.refresh_token = token
+
+            if not self.refresh_token:
+                # allow downloading from quarantined subreddits (#2180)
+                extractor.cookies.set(
+                    "_options", '%7B%22pref_quarantine_optin%22%3A%20true%7D',
+                    domain=extractor.cookies_domain)
 
     def submission(self, submission_id):
         """Fetch the (submission, comments)=-tuple for a submission id"""
@@ -416,13 +447,11 @@ class RedditAPI():
     def submissions_subreddit(self, subreddit, params):
         """Collect all (submission, comments)-tuples of a subreddit"""
         endpoint = subreddit + "/.json"
-        params["limit"] = 100
         return self._pagination(endpoint, params)
 
     def submissions_user(self, user, params):
         """Collect all (submission, comments)-tuples posted by a user"""
         endpoint = "/user/" + user + "/.json"
-        params["limit"] = 100
         return self._pagination(endpoint, params)
 
     def morechildren(self, link_id, children):
@@ -472,12 +501,12 @@ class RedditAPI():
 
         if response.status_code != 200:
             self.log.debug("Server response: %s", data)
-            raise exception.AuthenticationError('"{}: {}"'.format(
-                data.get("error"), data.get("message")))
+            raise exception.AuthenticationError(
+                f"\"{data.get('error')}: {data.get('message')}\"")
         return "Bearer " + data["access_token"]
 
     def _call(self, endpoint, params):
-        url = "https://oauth.reddit.com" + endpoint
+        url = self.root + endpoint
         params["raw_json"] = "1"
 
         while True:
@@ -502,7 +531,8 @@ class RedditAPI():
             try:
                 data = response.json()
             except ValueError:
-                raise exception.StopExtraction(text.remove_html(response.text))
+                raise exception.AbortExtraction(
+                    text.remove_html(response.text))
 
             if "error" in data:
                 if data["error"] == 403:
@@ -510,7 +540,7 @@ class RedditAPI():
                 if data["error"] == 404:
                     raise exception.NotFoundError()
                 self.log.debug(data)
-                raise exception.StopExtraction(data.get("message"))
+                raise exception.AbortExtraction(data.get("message"))
             return data
 
     def _pagination(self, endpoint, params):
@@ -520,6 +550,9 @@ class RedditAPI():
             self.log.debug("Ignoring 'id-max' setting \"zik0zj\"")
             id_max = float("inf")
         date_min, date_max = self.extractor._get_date_min_max(0, 253402210800)
+
+        if limit := self.extractor.config("limit"):
+            params["limit"] = limit
 
         while True:
             data = self._call(endpoint, params)["data"]
@@ -567,8 +600,7 @@ class RedditAPI():
         sid = self.extractor.config(key)
         return self._decode(sid.rpartition("_")[2].lower()) if sid else default
 
-    @staticmethod
-    def _decode(sid):
+    def _decode(self, sid):
         return util.bdecode(sid, "0123456789abcdefghijklmnopqrstuvwxyz")
 
 

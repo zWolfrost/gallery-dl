@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-# Copyright 2021-2023 Mike Fährmann
+# Copyright 2021-2025 Mike Fährmann
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License version 2 as
@@ -8,7 +8,6 @@
 
 """Helpers for interacting with youtube-dl"""
 
-import re
 import shlex
 import itertools
 from . import text, util, exception
@@ -20,21 +19,23 @@ def import_module(module_name):
             return __import__("yt_dlp")
         except (ImportError, SyntaxError):
             return __import__("youtube_dl")
-    return __import__(module_name.replace("-", "_"))
+    return util.import_file(module_name)
 
 
 def construct_YoutubeDL(module, obj, user_opts, system_opts=None):
     opts = argv = None
     config = obj.config
 
-    cfg = config("config-file")
-    if cfg:
-        with open(util.expand_path(cfg)) as fp:
+    if not config("deprecations"):
+        module.YoutubeDL.deprecated_feature = util.false
+        module.YoutubeDL.deprecation_warning = util.false
+
+    if cfg := config("config-file"):
+        with open(util.expand_path(cfg), encoding="utf-8") as fp:
             contents = fp.read()
         argv = shlex.split(contents, comments=True)
 
-    cmd = config("cmdline-args")
-    if cmd:
+    if cmd := config("cmdline-args"):
         if isinstance(cmd, str):
             cmd = shlex.split(cmd)
         argv = (argv + cmd) if argv else cmd
@@ -42,7 +43,7 @@ def construct_YoutubeDL(module, obj, user_opts, system_opts=None):
     try:
         opts = parse_command_line(module, argv) if argv else user_opts
     except SystemExit:
-        raise exception.StopExtraction("Invalid command-line option")
+        raise exception.AbortExtraction("Invalid command-line option")
 
     if opts.get("format") is None:
         opts["format"] = config("format")
@@ -50,29 +51,41 @@ def construct_YoutubeDL(module, obj, user_opts, system_opts=None):
         opts["nopart"] = not config("part", True)
     if opts.get("updatetime") is None:
         opts["updatetime"] = config("mtime", True)
-    if opts.get("ratelimit") is None:
-        opts["ratelimit"] = text.parse_bytes(config("rate"), None)
     if opts.get("min_filesize") is None:
         opts["min_filesize"] = text.parse_bytes(config("filesize-min"), None)
     if opts.get("max_filesize") is None:
         opts["max_filesize"] = text.parse_bytes(config("filesize-max"), None)
+    if opts.get("overwrites") is None and not config("skip", True):
+        opts["overwrites"] = True
+    if opts.get("ratelimit") is None:
+        if rate := config("rate"):
+            func = util.build_selection_func(rate, 0, text.parse_bytes)
+            if hasattr(func, "args"):
+                opts["__gdl_ratelimit_func"] = func
+            else:
+                opts["ratelimit"] = func() or None
+        else:
+            opts["ratelimit"] = None
 
-    raw_opts = config("raw-options")
-    if raw_opts:
+    if raw_opts := config("raw-options"):
         opts.update(raw_opts)
     if config("logging", True):
         opts["logger"] = obj.log
     if system_opts:
         opts.update(system_opts)
 
+    opts["__gdl_initialize"] = True
     return module.YoutubeDL(opts)
 
 
 def parse_command_line(module, argv):
     parser, opts, args = module.parseOpts(argv)
 
-    ytdlp = (module.__name__ == "yt_dlp")
-    std_headers = module.std_headers
+    ytdlp = hasattr(module, "cookies")
+    try:
+        std_headers = module.utils.networking.std_headers
+    except AttributeError:
+        std_headers = module.std_headers
 
     try:
         parse_bytes = module.parse_bytes
@@ -141,7 +154,7 @@ def parse_command_line(module, argv):
         if name not in compat_opts:
             return False
         compat_opts.discard(name)
-        compat_opts.update(["*%s" % name])
+        compat_opts.update([f"*{name}"])
         return True
 
     def set_default_compat(
@@ -206,7 +219,7 @@ def parse_command_line(module, argv):
                 if "pre_process" not in parse_metadata:
                     parse_metadata["pre_process"] = []
                 parse_metadata["pre_process"].append(
-                    "title:%s" % opts.metafromtitle)
+                    f"title:{opts.metafromtitle}")
             opts.parse_metadata = {
                 k: list(itertools.chain.from_iterable(map(
                         metadataparser_actions, v)))
@@ -216,7 +229,7 @@ def parse_command_line(module, argv):
             if parse_metadata is None:
                 parse_metadata = []
             if opts.metafromtitle is not None:
-                parse_metadata.append("title:%s" % opts.metafromtitle)
+                parse_metadata.append(f"title:{opts.metafromtitle}")
             opts.parse_metadata = list(itertools.chain.from_iterable(map(
                 metadataparser_actions, parse_metadata)))
 
@@ -250,15 +263,13 @@ def parse_command_line(module, argv):
         None if opts.match_filter is None
         else module.match_filter_func(opts.match_filter))
 
-    cookiesfrombrowser = getattr(opts, "cookiesfrombrowser", None)
-    if cookiesfrombrowser:
-        match = re.fullmatch(r"""(?x)
+    if cookiesfrombrowser := getattr(opts, "cookiesfrombrowser", None):
+        pattern = text.re(r"""(?x)
             (?P<name>[^+:]+)
             (?:\s*\+\s*(?P<keyring>[^:]+))?
             (?:\s*:\s*(?!:)(?P<profile>.+?))?
-            (?:\s*::\s*(?P<container>.+))?
-        """, cookiesfrombrowser)
-        if match:
+            (?:\s*::\s*(?P<container>.+))?""")
+        if match := pattern.fullmatch(cookiesfrombrowser):
             browser, keyring, profile, container = match.groups()
             if keyring is not None:
                 keyring = keyring.upper()
@@ -339,7 +350,7 @@ def parse_command_line(module, argv):
         "nopart": opts.nopart,
         "updatetime": opts.updatetime,
         "writedescription": opts.writedescription,
-        "writeannotations": opts.writeannotations,
+        "writeannotations": getattr(opts, "writeannotations", None),
         "writeinfojson": opts.writeinfojson,
         "allow_playlist_files": opts.allow_playlist_files,
         "clean_infojson": opts.clean_infojson,
@@ -372,7 +383,8 @@ def parse_command_line(module, argv):
         "max_views": opts.max_views,
         "daterange": date,
         "cachedir": opts.cachedir,
-        "youtube_print_sig_code": opts.youtube_print_sig_code,
+        "youtube_print_sig_code": getattr(
+            opts, "youtube_print_sig_code", None),
         "age_limit": opts.age_limit,
         "download_archive": download_archive_fn,
         "break_on_existing": getattr(opts, "break_on_existing", None),
@@ -388,8 +400,8 @@ def parse_command_line(module, argv):
         "socket_timeout": opts.socket_timeout,
         "bidi_workaround": opts.bidi_workaround,
         "debug_printtraffic": opts.debug_printtraffic,
-        "prefer_ffmpeg": opts.prefer_ffmpeg,
-        "include_ads": opts.include_ads,
+        "prefer_ffmpeg": getattr(opts, "prefer_ffmpeg", None),
+        "include_ads": getattr(opts, "include_ads", None),
         "default_search": opts.default_search,
         "dynamic_mpd": getattr(opts, "dynamic_mpd", None),
         "extractor_args": getattr(opts, "extractor_args", None),
@@ -414,7 +426,7 @@ def parse_command_line(module, argv):
             opts, "sleep_interval_subtitles", None),
         "external_downloader": opts.external_downloader,
         "playlist_items": opts.playlist_items,
-        "xattr_set_filesize": opts.xattr_set_filesize,
+        "xattr_set_filesize": getattr(opts, "xattr_set_filesize", None),
         "match_filter": match_filter,
         "no_color": getattr(opts, "no_color", None),
         "ffmpeg_location": opts.ffmpeg_location,
@@ -424,7 +436,7 @@ def parse_command_line(module, argv):
             opts, "hls_split_discontinuity", None),
         "external_downloader_args": opts.external_downloader_args,
         "postprocessor_args": opts.postprocessor_args,
-        "cn_verification_proxy": opts.cn_verification_proxy,
+        "cn_verification_proxy": getattr(opts, "cn_verification_proxy", None),
         "geo_verification_proxy": opts.geo_verification_proxy,
         "geo_bypass": getattr(
             opts, "geo_bypass", "default"),
@@ -518,7 +530,7 @@ def legacy_postprocessors(opts, module, ytdlp, compat_opts):
             if len(dur) == 2 and all(t is not None for t in dur):
                 remove_ranges.append(tuple(dur))
                 continue
-        remove_chapters_patterns.append(re.compile(regex))
+        remove_chapters_patterns.append(text.re(regex))
     if opts.remove_chapters or sponsorblock_query:
         postprocessors.append({
             "key": "ModifyChapters",

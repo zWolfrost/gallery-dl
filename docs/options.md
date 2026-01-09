@@ -11,9 +11,10 @@
     -d, --destination PATH      Target location for file downloads
     -D, --directory PATH        Exact location for file downloads
     -X, --extractors PATH       Load external extractors from PATH
-    --user-agent UA             User-Agent request header
+    -a, --user-agent UA         User-Agent request header
     --clear-cache MODULE        Delete cached login sessions, cookies, etc. for
                                 MODULE (ALL to delete everything)
+    --compat                    Restore legacy 'category' names
 
 ## Update Options:
     -U, --update                Update to the latest version
@@ -49,10 +50,16 @@
                                 values for the given URLs
     -e, --error-file FILE       Add input URLs which returned an error to FILE
     -N, --print [EVENT:]FORMAT  Write FORMAT during EVENT (default 'prepare')
-                                to standard output. Examples: 'id' or
-                                'post:{md5[:8]}'
+                                to standard output instead of downloading
+                                files. Can be used multiple times. Examples:
+                                'id' or 'post:{md5[:8]}'
+    --Print [EVENT:]FORMAT      Like --print, but downloads files as well
     --print-to-file [EVENT:]FORMAT FILE
-                                Append FORMAT during EVENT to FILE
+                                Append FORMAT during EVENT to FILE instead of
+                                downloading files. Can be used multiple times
+    --Print-to-file [EVENT:]FORMAT FILE
+                                Like --print-to-file, but downloads files as
+                                well
     --list-modules              Print a list of available extractor modules
     --list-extractors [CATEGORIES]
                                 Print a list of extractor classes with
@@ -77,13 +84,18 @@
     --no-check-certificate      Disable HTTPS certificate validation
 
 ## Downloader Options:
-    -r, --limit-rate RATE       Maximum download rate (e.g. 500k or 2.5M)
+    -r, --limit-rate RATE       Maximum download rate (e.g. 500k, 2.5M, or
+                                800k-2M)
     --chunk-size SIZE           Size of in-memory data chunks (default: 32k)
     --sleep SECONDS             Number of seconds to wait before each download.
                                 This can be either a constant value or a range
                                 (e.g. 2.7 or 2.0-3.5)
+    --sleep-skip SECONDS        Number of seconds to wait after skipping a file
+                                download
     --sleep-request SECONDS     Number of seconds to wait between HTTP requests
                                 during data extraction
+    --sleep-429 SECONDS         Number of seconds to wait when receiving a '429
+                                Too Many Requests' response
     --sleep-extractor SECONDS   Number of seconds to wait before starting data
                                 extraction for an input URL
     --no-part                   Do not use .part files
@@ -118,29 +130,35 @@
                                 container (default), 'all' for all containers)
 
 ## Selection Options:
-    -A, --abort N               Stop current extractor run after N consecutive
+    -A, --abort N[:TARGET]      Stop current extractor(s) after N consecutive
+                                file downloads were skipped. Specify a TARGET
+                                to set how many levels to ascend or to which
+                                subcategory to jump to. Examples: '-A 3', '-A
+                                3:2', '-A 3:manga'
+    -T, --terminate N           Stop current & parent extractors and proceed
+                                with the next input URL after N consecutive
                                 file downloads were skipped
-    -T, --terminate N           Stop current and parent extractor runs after N
-                                consecutive file downloads were skipped
     --filesize-min SIZE         Do not download files smaller than SIZE (e.g.
                                 500k or 2.5M)
     --filesize-max SIZE         Do not download files larger than SIZE (e.g.
                                 500k or 2.5M)
-    --download-archive FILE     Record all downloaded or skipped files in FILE
+    --download-archive FILE     Record successfully downloaded files in FILE
                                 and skip downloading any file already in it
     --range RANGE               Index range(s) specifying which files to
                                 download. These can be either a constant value,
                                 range, or slice (e.g. '5', '8-20', or '1:24:3')
-    --chapter-range RANGE       Like '--range', but applies to manga chapters
-                                and other delegated URLs
+    --post-range RANGE          Like '--range', but for posts
+    --chapter-range RANGE       Like '--range', but for child extractors
+                                handling manga chapters, external URLs, etc.
     --filter EXPR               Python expression controlling which files to
                                 download. Files for which the expression
                                 evaluates to False are ignored. Available keys
                                 are the filename-specific ones listed by '-K'.
                                 Example: --filter "image_width >= 1000 and
                                 rating in ('s', 'q')"
-    --chapter-filter EXPR       Like '--filter', but applies to manga chapters
-                                and other delegated URLs
+    --post-filter EXPR          Like '--filter', but for posts
+    --chapter-filter EXPR       Like '--filter', but for child extractors
+                                handling manga chapters, external URLs, etc.
 
 ## Post-processing Options:
     -P, --postprocessor NAME    Activate the specified post processor

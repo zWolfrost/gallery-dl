@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-# Copyright 2018-2023 Mike Fährmann
+# Copyright 2018-2025 Mike Fährmann
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License version 2 as
@@ -11,6 +11,7 @@
 modules = [
     "classify",
     "compare",
+    "directory",
     "exec",
     "hash",
     "metadata",
@@ -32,7 +33,7 @@ def find(name):
     cls = None
     if name in modules:  # prevent unwanted imports
         try:
-            module = __import__(name, globals(), None, (), 1)
+            module = __import__(name, globals(), None, None, 1)
         except ImportError:
             pass
         else:
